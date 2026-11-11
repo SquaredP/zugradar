@@ -256,9 +256,10 @@ const dark=matchMedia('(prefers-color-scheme: dark)');
 let base=null;
 function setBase(){
   if(base)map.removeLayer(base);
-  base=L.tileLayer('https://{s}.basemaps.cartocdn.com/'+(dark.matches?'dark_all':'light_all')+'/{z}/{x}/{y}{r}.png',
-    {subdomains:'abcd',maxZoom:19,attribution:'© OpenStreetMap, © CARTO'}).addTo(map);
-  base.bringToBack();
+  const k=dark.matches?'Dark':'Light',u='https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_'+k+'_Gray_';
+  const opt={maxNativeZoom:16,maxZoom:19,attribution:'Karte: © Esri, OpenStreetMap-Mitwirkende'};
+  base=L.layerGroup([L.tileLayer(u+'Base/MapServer/tile/{z}/{y}/{x}',opt),L.tileLayer(u+'Reference/MapServer/tile/{z}/{y}/{x}',{...opt,attribution:''})]).addTo(map);
+  base.eachLayer(l=>l.bringToBack());
 }
 setBase();dark.addEventListener('change',setBase);
 L.tileLayer('https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png',
