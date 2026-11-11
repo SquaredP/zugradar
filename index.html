@@ -244,7 +244,7 @@ const state={
   favs:store.get('favs',[]),
   onlyStation:false, stationTrips:new Set(), query:'',
   trips:new Map(),            // tripId -> {id,name,cat,segs[]}
-  sel:null,                   // {id,name,cat,trip,follow}
+  sel:null,err:null,          // {id,name,cat,trip,follow}
   tab:'map', sheet:null, lastOk:0
 };
 
@@ -270,17 +270,22 @@ let routeLine=null,meMarker=null;
 async function api(path,params,signal){
   const u=new URL(API+path);
   for(const[k,v]of Object.entries(params))if(v!=null&&v!=='')u.searchParams.set(k,v);
-  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),15000);
+  const ctl=new AbortController();let timedOut=false;
+  const timer=setTimeout(()=>{timedOut=true;ctl.abort();},45000);
   if(signal)signal.addEventListener('abort',()=>ctl.abort());
   try{
     const r=await fetch(u,{signal:ctl.signal,headers:{accept:'application/json'}});
-    if(!r.ok)throw new Error('HTTP '+r.status);
+    if(!r.ok)throw new Error(r.status===429?'zu viele Anfragen (429)':'Serverfehler '+r.status);
     return await r.json();
+  }catch(e){
+    if(timedOut)throw new Error('Zeitüberschreitung');
+    if(e.name==='TypeError')throw new Error('keine Verbindung');
+    throw e;
   }finally{clearTimeout(timer);}
 }
 
 /* ---------- Züge im Kartenausschnitt ---------- */
-let tripsCtl=null;
+let tripsCtl=null,retryTimer=null;
 async function loadTrips(){
   if(document.hidden)return;
   if(tripsCtl)tripsCtl.abort();
@@ -305,11 +310,13 @@ async function loadTrips(){
         from:s.from&&s.from.name,to:s.to&&s.to.name,coords,cum:cumulative(coords)});
     }
     for(const t of next.values())t.segs.sort((a,b)=>a.dep-b.dep);
-    state.trips=next;state.lastOk=Date.now();
+    state.trips=next;state.lastOk=Date.now();state.err=null;
     render();
   }catch(e){
     if(e.name==='AbortError'&&tripsCtl.signal.aborted)return;
-    setStatus('Zugtracker nicht erreichbar. Neuer Versuch in 30 s.',true);
+    state.err='Zugtracker: '+(e.message||'Fehler')+'. Neuer Versuch in 10 s.';
+    setStatus(state.err,true);
+    clearTimeout(retryTimer);retryTimer=setTimeout(loadTrips,10000);
   }
 }
 function passes(t){
@@ -366,7 +373,7 @@ function render(){
     const age=Math.round((now-state.lastOk)/1000);
     let txt='Stand '+new Date(state.lastOk).toLocaleTimeString('de-DE')+' · '+shown+(shown===1?' Zug':' Züge');
     if(map.getZoom()<10&&[...state.cats].some(c=>c!=='fern'))txt+=' · für Nahverkehr näher heranzoomen';
-    if(age<70)setStatus(txt,false);
+    if(age<70&&!state.err)setStatus(txt,false);
   }
   if(state.sel&&state.sel.follow){
     const m=markers.get(state.sel.id);
