@@ -341,31 +341,35 @@ function render(){
   const list=[...state.trips.values()].filter(passes).sort((a,b)=>CAT_ORDER.indexOf(a.cat)-CAT_ORDER.indexOf(b.cat));
   for(const t of list){
     if(shown>=350)break;
-    const isSel=!!(state.sel&&state.sel.id===t.id);
+    if(state.sel&&state.sel.id===t.id)continue;
     const p=segmentPosition(t.segs,now);
-    let pos=p.pos;
-    if(isSel&&state.sel.trip){const tp=tripPosition(state.sel.trip,now);if(tp)pos=tp.pos;}
-    if(!pos)continue;
+    if(!p.pos)continue;
     seen.add(t.id);shown++;
-    const ic=iconFor(t,p.seg,isSel);
+    const ic=iconFor(t,p.seg,false);
     let m=markers.get(t.id);
     if(!m){
-      m=L.marker(pos,{icon:ic.make(),keyboard:false,zIndexOffset:isSel?1000:0}).addTo(map);
+      m=L.marker(p.pos,{icon:ic.make(),keyboard:false}).addTo(map);
       m.on('click',()=>selectTrip(t.id,t.name,t.cat));m._k=ic.key;markers.set(t.id,m);
     }else{
-      m.setLatLng(pos);
-      if(m._k!==ic.key){m.setIcon(ic.make());m._k=ic.key;m.setZIndexOffset(isSel?1000:0);}
+      m.setLatLng(p.pos);
+      if(m._k!==ic.key){m.setIcon(ic.make());m._k=ic.key;m.setZIndexOffset(0);}
     }
   }
-  /* verfolgter Zug außerhalb des geladenen Ausschnitts */
-  if(state.sel&&state.sel.trip&&!seen.has(state.sel.id)){
-    const tp=tripPosition(state.sel.trip,now);
-    if(tp){
-      const fake={name:state.sel.name,cat:state.sel.cat},ic=iconFor(fake,{rt:state.sel.trip.rt,arr:0,sarr:0},true);
-      let m=markers.get(state.sel.id);
-      if(!m){m=L.marker(tp.pos,{icon:ic.make(),keyboard:false,zIndexOffset:1000}).addTo(map);m._k=ic.key;markers.set(state.sel.id,m);}
-      else{m.setLatLng(tp.pos);if(m._k!==ic.key){m.setIcon(ic.make());m._k=ic.key;}}
-      seen.add(state.sel.id);
+  /* Der verfolgte Zug hängt nie vom Kartenausschnitt, Zoom oder Filter ab */
+  const sel=state.sel;
+  if(sel){
+    const t=state.trips.get(sel.id);
+    if(t){sel.segs=t.segs;sel.mode=sel.mode||t.mode;}
+    let pos=null,seg=null;
+    if(sel.trip){const tp=tripPosition(sel.trip,now);if(tp)pos=tp.pos;}
+    if(sel.segs&&sel.segs.length){const p=segmentPosition(sel.segs,now);seg=p.seg;if(!pos)pos=p.pos;}
+    if(pos)sel.lastPos=pos;else pos=sel.lastPos;
+    if(pos){
+      const ic=iconFor({name:sel.name,cat:sel.cat},seg||{rt:!!(sel.trip&&sel.trip.rt),arr:0,sarr:0},true);
+      let m=markers.get(sel.id);
+      if(!m){m=L.marker(pos,{icon:ic.make(),keyboard:false,zIndexOffset:1000}).addTo(map);m._k=ic.key;markers.set(sel.id,m);}
+      else{m.setLatLng(pos);if(m._k!==ic.key){m.setIcon(ic.make());m._k=ic.key;m.setZIndexOffset(1000);}}
+      seen.add(sel.id);shown++;
     }
   }
   for(const[id,m]of markers)if(!seen.has(id)){map.removeLayer(m);markers.delete(id);}
@@ -420,7 +424,10 @@ async function loadTrip(){
     if(!sel.jumped){sel.jumped=true;const tp=tripPosition(sel.trip,Date.now());if(tp)map.setView(tp.pos,Math.max(map.getZoom(),12));}
     renderTripSheet();render();
   }catch(e){
-    if(state.sel===sel&&!sel.trip&&state.sheet==='trip'){$('shBody').replaceChildren(el('p','hint','Der Fahrtverlauf lässt sich gerade nicht laden. Die Position auf der Karte läuft weiter, solange der Zug im Ausschnitt ist.'));}
+    if(state.sel===sel&&!sel.trip){
+      if(state.sheet==='trip')$('shBody').replaceChildren(el('p','hint','Der Fahrtverlauf lässt sich gerade nicht laden ('+(e.message||'Fehler')+'). Der Zug bleibt auf der Karte, neuer Versuch in 8 s.'));
+      clearTimeout(tripRetry);tripRetry=setTimeout(loadTrip,8000);
+    }
   }
 }
 function renderTripSheet(){
@@ -457,7 +464,7 @@ function renderTripSheet(){
   fb.append(lab,selEl,add);body.appendChild(fb);
   renderTripStatus(true);
 }
-let lastStopKey='';
+let lastStopKey='',tripRetry=null;
 function renderTripStatus(force){
   const sel=state.sel,box=$('tripNow');if(!sel||!sel.trip||!box)return;
   const now=Date.now(),tp=tripPosition(sel.trip,now),st=sel.trip.stops;if(!tp)return;
