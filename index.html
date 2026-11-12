@@ -83,7 +83,10 @@ button{cursor:pointer}
 .body{overflow-y:auto;min-height:0;padding-bottom:12px;display:flex;flex-direction:column;gap:10px}
 .badge{flex:none;font:700 15px/1 var(--sign);letter-spacing:.02em;padding:5px 7px;border-radius:5px;background:var(--c);color:#fff;white-space:nowrap}
 @media (prefers-color-scheme:dark){.badge{color:#101416}}
-.now{font-weight:500}
+.nowrow{display:flex;gap:12px;align-items:center;justify-content:space-between}
+.now{font-weight:500;min-width:0;flex:1}
+.speed{flex:none;text-align:right;font:700 30px/1 var(--sign);letter-spacing:.01em}
+.speed small{display:block;margin-top:3px;font:500 11px/1.2 var(--ui);color:var(--muted);letter-spacing:0}
 .now small{display:block;color:var(--muted);font-weight:400}
 .late{color:var(--late);font-weight:600} .ok{color:var(--ontime);font-weight:600}
 .acts{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
@@ -228,6 +231,15 @@ function tripPosition(trip,now){
     }
   }
   return{pos:st[n-1].ll,state:'done',i:n-1};
+}
+/* Durchschnittsgeschwindigkeit (km/h) zwischen Halt i und i+1 aus Strecke und Echtzeit-Fahrzeit */
+function legSpeed(trip,i){
+  const st=trip.stops;if(i<0||i>=st.length-1)return null;
+  const a=st[i],b=st[i+1],t0=a.dep??a.arr,t1=b.arr??b.dep;
+  if(t0==null||t1==null||t1<=t0)return null;
+  const m=trip.coords.length>1&&b.idx>a.idx?trip.cum[b.idx]-trip.cum[a.idx]:dist(a.ll,b.ll);
+  const v=m/((t1-t0)/1000)*3.6;
+  return v>=5&&v<=380?Math.round(v):null;
 }
 /* ===== /PURE ===== */
 
@@ -446,7 +458,9 @@ function renderTripSheet(){
   $('shTitle').replaceChildren(sel.trip?el('span',null,'nach '):'',sel.trip?sel.trip.dest:'Fahrtverlauf wird geladen …');
   if(!sel.trip){$('shBody').replaceChildren();return;}
   const body=$('shBody');body.replaceChildren();
-  body.appendChild(Object.assign(el('div','now'),{id:'tripNow'}));
+  const row=el('div','nowrow');
+  row.append(Object.assign(el('div','now'),{id:'tripNow'}),Object.assign(el('div','speed num'),{id:'tripSpeed'}));
+  body.appendChild(row);
   const acts=el('div','acts');
   const fol=el('button','btn','Karte folgt dem Zug');fol.type='button';fol.id='followBtn';fol.setAttribute('aria-pressed',String(sel.follow));
   fol.onclick=()=>{sel.follow=!sel.follow;fol.setAttribute('aria-pressed',String(sel.follow));render();};
@@ -494,6 +508,12 @@ function renderTripStatus(force){
     else sm.append('nur Fahrplan, keine Echtzeit');
   }
   box.appendChild(sm);
+  const sp=$('tripSpeed');
+  if(sp){
+    sp.replaceChildren();
+    if(tp.state==='run'&&!sel.trip.cancelled){const v=legSpeed(sel.trip,tp.i);if(v)sp.append(String(v),el('small',null,'km/h · Ø bis Halt'));}
+    else if(tp.state==='stop'||tp.state==='wait')sp.append('Halt');
+  }
   const key=sel.id+'|'+tp.i+'|'+tp.state+'|'+st.map(s=>s.arr).join();
   if(!force&&key===lastStopKey)return;lastStopKey=key;
   const ul=$('stopList');if(!ul)return;ul.replaceChildren();
