@@ -57,6 +57,10 @@ button{cursor:pointer}
 .chip[aria-pressed="false"]{color:var(--muted)}
 .lineq{flex:none;width:118px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:6px 11px;box-shadow:0 1px 4px rgba(0,0,0,.1)}
 .status{align-self:flex-start;max-width:100%;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:2px 8px;font-size:12px;color:var(--muted)}
+.track{align-self:flex-start;max-width:100%;display:flex;background:var(--surface);border:1px solid var(--line);border-radius:999px;box-shadow:0 1px 4px rgba(0,0,0,.12);overflow:hidden}
+.tbtn{min-width:0;background:none;border:0;padding:9px 4px 9px 14px;font:600 14px/1.2 var(--ui);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.tbtn::before{content:"";display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--c);margin-right:8px}
+.tstop{flex:none;background:none;border:0;padding:0 14px;font-size:22px;line-height:1;color:var(--muted)}
 .status.err{color:var(--late);border-color:var(--late)}
 
 /* Zugmarken auf der Karte */
@@ -145,6 +149,7 @@ nav button[aria-current="true"]{color:var(--fg);border-top-color:var(--fg)}
       <input class="lineq" id="lineQ" type="search" placeholder="Linie, z. B. ICE 774" enterkeyhint="search" autocomplete="off" aria-label="Nach Linie oder Zugnummer filtern">
     </div>
     <div class="status num" id="status" role="status">Lade Züge …</div>
+    <div class="track" id="track" hidden><button class="tbtn" id="trackOpen" type="button" aria-label="Verfolgten Zug anzeigen"></button><button class="tstop" id="trackStop" type="button" aria-label="Verfolgung beenden">×</button></div>
   </div>
 
   <div id="map"></div>
@@ -369,7 +374,7 @@ function render(){
     let m=markers.get(t.id);
     if(!m){
       m=L.marker(p.pos,{icon:ic.make(),keyboard:false}).addTo(map);
-      m.on('click',()=>selectTrip(t.id,t.name,t.cat));m._k=ic.key;markers.set(t.id,m);
+      m._meta={name:t.name,cat:t.cat};m.on('click',()=>onMarker(t.id,m));m._k=ic.key;markers.set(t.id,m);
     }else{
       m.setLatLng(p.pos);
       if(m._k!==ic.key){m.setIcon(ic.make());m._k=ic.key;m.setZIndexOffset(0);}
@@ -387,7 +392,7 @@ function render(){
     if(pos){
       const ic=iconFor({name:sel.name,cat:sel.cat},seg||{rt:!!(sel.trip&&sel.trip.rt),arr:0,sarr:0},true);
       let m=markers.get(sel.id);
-      if(!m){m=L.marker(pos,{icon:ic.make(),keyboard:false,zIndexOffset:1000}).addTo(map);m._k=ic.key;markers.set(sel.id,m);}
+      if(!m){m=L.marker(pos,{icon:ic.make(),keyboard:false,zIndexOffset:1000}).addTo(map);m._meta={name:sel.name,cat:sel.cat};m.on('click',()=>onMarker(sel.id,m));m._k=ic.key;markers.set(sel.id,m);}
       else{m.setLatLng(pos);if(m._k!==ic.key){m.setIcon(ic.make());m._k=ic.key;m.setZIndexOffset(1000);}}
       seen.add(sel.id);shown++;
     }
@@ -406,9 +411,34 @@ function render(){
     if(m)map.panTo(m.getLatLng(),{animate:true,duration:.8});
   }
   if(state.sheet==='trip')renderTripStatus();
+  paintTrack();
 }
 
 /* ---------- Zug verfolgen ---------- */
+function onMarker(id,m){
+  if(state.sel&&state.sel.id===id){if(state.sheet!=='trip')openSheet('trip');return;}
+  selectTrip(id,m._meta.name,m._meta.cat);
+}
+/* Kapsel oben: zeigt den verfolgten Zug, solange das Infoblatt nicht offen ist */
+function paintTrack(){
+  const sel=state.sel,box=$('track'),show=!!sel&&state.sheet!=='trip';
+  box.hidden=!show;
+  const st=$('status');st.hidden=show&&!st.classList.contains('err');
+  if(!show)return;
+  let txt=sel.name;
+  if(sel.trip){
+    const tp=tripPosition(sel.trip,Date.now());
+    if(tp){
+      if(tp.state==='run'){const v=legSpeed(sel.trip,tp.i);if(v)txt+=' · '+v+' km/h';}
+      else if(tp.state==='stop'||tp.state==='wait')txt+=' · Halt';
+    }
+  }
+  const b=$('trackOpen');
+  if(b.textContent!==txt)b.textContent=txt;
+  b.className='tbtn c-'+sel.cat;
+}
+$('trackOpen').onclick=()=>openSheet('trip');
+$('trackStop').onclick=()=>{clearSel();paintTrack();loadTrips(true);};
 async function selectTrip(id,name,cat){
   state.sel={id,name:name||'Zug',cat:cat||'regio',trip:null,follow:true,jumped:false};
   setTab('map');openSheet('trip');
@@ -539,11 +569,13 @@ function openSheet(kind){
   if(kind==='station')renderStationPicker();
   if(kind==='find')renderFind();
   map.invalidateSize();
+  paintTrack();
 }
+/* Schließen klappt nur das Blatt ein. Der Zug bleibt verfolgt, bis die Kapsel oben mit × beendet wird. */
 function closeSheet(){
   const wasTrip=state.sheet==='trip';
-  if(wasTrip)clearSel();
   state.sheet=null;$('sheet').hidden=true;setTab('map',true);map.invalidateSize();
+  paintTrack();
   if(wasTrip)loadTrips(true);
 }
 function setTab(tab,quiet){
