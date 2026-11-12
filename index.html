@@ -56,7 +56,7 @@ button{cursor:pointer}
 .chip[aria-pressed="true"] i{opacity:1}
 .chip[aria-pressed="false"]{color:var(--muted)}
 .lineq{flex:none;width:118px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:6px 11px;box-shadow:0 1px 4px rgba(0,0,0,.1)}
-.status{align-self:flex-start;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:2px 8px;font-size:12px;color:var(--muted)}
+.status{align-self:flex-start;max-width:100%;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:2px 8px;font-size:12px;color:var(--muted)}
 .status.err{color:var(--late);border-color:var(--late)}
 
 /* Zugmarken auf der Karte */
@@ -139,7 +139,7 @@ nav button[aria-current="true"]{color:var(--fg);border-top-color:var(--fg)}
       <button class="chip c-regio" data-cat="regio" type="button"><i></i>Regional</button>
       <button class="chip c-sbahn" data-cat="sbahn" type="button"><i></i>S-Bahn</button>
       <button class="chip c-stadt" data-cat="stadt" type="button"><i></i>Tram · U · Bus</button>
-      <input class="lineq" id="lineQ" type="search" placeholder="Linie, z. B. S3" autocomplete="off" aria-label="Nach Linie oder Zugnummer filtern">
+      <input class="lineq" id="lineQ" type="search" placeholder="Linie, z. B. ICE 774" enterkeyhint="search" autocomplete="off" aria-label="Nach Linie oder Zugnummer filtern">
     </div>
     <div class="status num" id="status" role="status">Lade Züge …</div>
   </div>
@@ -198,7 +198,7 @@ function pointAlong(coords,cum,i0,i1,f){
 function nearestIndex(coords,p,from){let best=from,bd=Infinity;for(let j=from;j<coords.length;j++){const d=dist(coords[j],p);if(d<bd){bd=d;best=j;}}return best;}
 function ms(s){const t=Date.parse(s);return isNaN(t)?null:t;}
 function delayMin(real,sched){return(real==null||sched==null)?0:Math.round((real-sched)/60000);}
-function norm(s){return String(s||'').toLowerCase().replace(/\s+/g,'');}
+function norm(s){return String(s||'').normalize('NFD').toLowerCase().replace(/[^a-z0-9]/g,'');}
 /* Position eines Zuges aus seinen Abschnitten (map/trips) zum Zeitpunkt now */
 function segmentPosition(segs,now){
   let cur=null;
@@ -244,7 +244,7 @@ const state={
   favs:store.get('favs',[]),
   onlyStation:false, stationTrips:new Set(), query:'',
   trips:new Map(),            // tripId -> {id,name,cat,segs[]}
-  sel:null,err:null,          // {id,name,cat,trip,follow}
+  sel:null,err:null,note:null,queryRaw:'',found:[],          // {id,name,cat,trip,follow}
   tab:'map', sheet:null, lastOk:0
 };
 
@@ -285,40 +285,48 @@ async function api(path,params,signal){
 }
 
 /* ---------- Züge im Kartenausschnitt ---------- */
-let tripsCtl=null,retryTimer=null;
-async function loadTrips(){
+let tripsCtl=null,retryTimer=null,loading=false,loadedZoom=null;
+function parseTrips(data,prec){
+  const next=new Map();
+  for(const s of(Array.isArray(data)?data:[])){
+    const info=(s.trips||[])[0];if(!info||!s.polyline)continue;
+    const coords=decodePolyline(s.polyline,prec);if(!coords.length)continue;
+    const names=[...new Set((s.trips||[]).map(t=>t.displayName||t.routeShortName).filter(Boolean))];
+    const dep=ms(s.departure),arr=ms(s.arrival);if(dep==null||arr==null)continue;
+    let t=next.get(info.tripId);
+    if(!t){t={id:info.tripId,name:names.join(' / ')||'Zug',cat:catOf(s.mode),mode:s.mode,segs:[]};next.set(info.tripId,t);}
+    t.segs.push({dep,arr,sdep:ms(s.scheduledDeparture),sarr:ms(s.scheduledArrival),rt:!!s.realTime,
+      from:s.from&&s.from.name,to:s.to&&s.to.name,coords,cum:cumulative(coords)});
+  }
+  for(const t of next.values())t.segs.sort((a,b)=>a.dep-b.dep);
+  return next;
+}
+const precFor=z=>z>=11?5:z>=8?4:3;
+/* force: laufende Anfrage abbrechen (Nutzer bewegt die Karte). Ohne force läuft eine begonnene Anfrage zu Ende. */
+async function loadTrips(force){
   if(document.hidden)return;
+  if(loading&&!force)return;
   if(tripsCtl)tripsCtl.abort();
-  tripsCtl=new AbortController();
-  const b=map.getBounds(),now=Date.now(),z=map.getZoom();
+  const my=new AbortController();tripsCtl=my;loading=true;
+  const b=map.getBounds(),now=Date.now(),z=map.getZoom();loadedZoom=z;
+  if(!state.lastOk&&!state.err)setStatus('Lade Züge …');
   try{
     const data=await api('/api/v6/map/trips',{
       min:b.getSouth().toFixed(5)+','+b.getEast().toFixed(5),
       max:b.getNorth().toFixed(5)+','+b.getWest().toFixed(5),
       startTime:new Date(now-30000).toISOString(),endTime:new Date(now+150000).toISOString(),
-      zoom:z,precision:z>=11?5:z>=8?4:3
-    },tripsCtl.signal);
-    const next=new Map(),prec=z>=11?5:z>=8?4:3;
-    for(const s of(Array.isArray(data)?data:[])){
-      const info=(s.trips||[])[0];if(!info||!s.polyline)continue;
-      const coords=decodePolyline(s.polyline,prec);if(!coords.length)continue;
-      const names=[...new Set((s.trips||[]).map(t=>t.displayName||t.routeShortName).filter(Boolean))];
-      const dep=ms(s.departure),arr=ms(s.arrival);if(dep==null||arr==null)continue;
-      let t=next.get(info.tripId);
-      if(!t){t={id:info.tripId,name:names.join(' / ')||'Zug',cat:catOf(s.mode),mode:s.mode,segs:[]};next.set(info.tripId,t);}
-      t.segs.push({dep,arr,sdep:ms(s.scheduledDeparture),sarr:ms(s.scheduledArrival),rt:!!s.realTime,
-        from:s.from&&s.from.name,to:s.to&&s.to.name,coords,cum:cumulative(coords)});
-    }
-    for(const t of next.values())t.segs.sort((a,b)=>a.dep-b.dep);
-    state.trips=next;state.lastOk=Date.now();state.err=null;
+      zoom:z,precision:precFor(z)
+    },my.signal);
+    state.trips=parseTrips(data,precFor(z));state.lastOk=Date.now();state.err=null;
     render();
   }catch(e){
-    if(e.name==='AbortError'&&tripsCtl.signal.aborted)return;
+    if(my.signal.aborted)return;
     state.err='Zugtracker: '+(e.message||'Fehler')+'. Neuer Versuch in 10 s.';
     setStatus(state.err,true);
     clearTimeout(retryTimer);retryTimer=setTimeout(loadTrips,10000);
-  }
+  }finally{if(tripsCtl===my)loading=false;}
 }
+function note(text,err,ms){state.note={text,err:!!err,until:Date.now()+ms};setStatus(text,!!err);}
 function passes(t){
   if(state.sel&&state.sel.id===t.id)return true;
   if(!state.cats.has(t.cat))return false;
@@ -377,7 +385,9 @@ function render(){
     const age=Math.round((now-state.lastOk)/1000);
     let txt='Stand '+new Date(state.lastOk).toLocaleTimeString('de-DE')+' · '+shown+(shown===1?' Zug':' Züge');
     if(map.getZoom()<10&&[...state.cats].some(c=>c!=='fern'))txt+=' · für Nahverkehr näher heranzoomen';
-    if(age<70&&!state.err)setStatus(txt,false);
+    if(state.query&&!list.length)txt='Kein Zug „'+state.queryRaw+'“ im Ausschnitt. Enter sucht im ganzen Netz.';
+    if(state.note&&Date.now()<state.note.until)setStatus(state.note.text,state.note.err);
+    else if(age<70&&!state.err)setStatus(txt,false);
   }
   if(state.sel&&state.sel.follow){
     const m=markers.get(state.sel.id);
@@ -507,11 +517,14 @@ function openSheet(kind){
   if(kind==='dep')renderDepartures();
   if(kind==='fav')renderFavs();
   if(kind==='station')renderStationPicker();
+  if(kind==='find')renderFind();
   map.invalidateSize();
 }
 function closeSheet(){
-  if(state.sheet==='trip')clearSel();
+  const wasTrip=state.sheet==='trip';
+  if(wasTrip)clearSel();
   state.sheet=null;$('sheet').hidden=true;setTab('map',true);map.invalidateSize();
+  if(wasTrip)loadTrips(true);
 }
 function setTab(tab,quiet){
   state.tab=tab;
@@ -638,7 +651,41 @@ $('chips').addEventListener('click',e=>{
   store.set('cats',[...state.cats]);paintChips();render();
   if(state.sheet==='dep')renderDepartures();
 });
-$('lineQ').addEventListener('input',e=>{state.query=norm(e.target.value);render();if(state.sheet==='dep')renderDepartures();});
+$('lineQ').addEventListener('input',e=>{state.queryRaw=e.target.value.trim();state.query=norm(e.target.value);render();if(state.sheet==='dep')renderDepartures();});
+$('lineQ').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();e.target.blur();findTrain();}});
+function showTrain(t){
+  state.trips.set(t.id,t);
+  const p=segmentPosition(t.segs,Date.now()).pos;
+  if(p)map.setView(p,Math.max(map.getZoom(),11));
+  selectTrip(t.id,t.name,t.cat);
+}
+async function findTrain(){
+  const q=state.query;if(!q)return;
+  let hits=[...state.trips.values()].filter(t=>norm(t.name).includes(q));
+  if(!hits.length){
+    note('Suche „'+state.queryRaw+'“ im ganzen Netz …',false,60000);
+    try{
+      const now=Date.now();
+      const data=await api('/api/v6/map/trips',{min:'47.2,15.2',max:'55.1,5.8',startTime:new Date(now-30000).toISOString(),endTime:new Date(now+150000).toISOString(),zoom:5,precision:3});
+      hits=[...parseTrips(data,3).values()].filter(t=>norm(t.name).includes(q));
+    }catch(e){note('Suche nicht möglich: '+(e.message||'Fehler'),true,8000);return;}
+    if(!hits.length){note('Kein Zug „'+state.queryRaw+'“ im Netz gefunden. Regional- und Nahverkehr wird nur im Kartenausschnitt gesucht.',true,10000);return;}
+    state.note=null;
+  }
+  if(hits.length===1){showTrain(hits[0]);return;}
+  state.found=hits.slice(0,30);setTab('map',true);openSheet('find');
+}
+function renderFind(){
+  $('shTitle').textContent=state.found.length+' Treffer für „'+state.queryRaw+'“';
+  const body=$('shBody');body.replaceChildren();
+  const ul=el('ul','rows');
+  for(const t of state.found){
+    const li=el('li'),b=el('button','row');b.type='button';b.style.gridTemplateColumns='auto minmax(0,1fr)';
+    b.append(el('span','badge c-'+t.cat,t.name),el('span','d',CATS[t.cat].label));
+    b.onclick=()=>showTrain(t);li.appendChild(b);ul.appendChild(li);
+  }
+  body.appendChild(ul);
+}
 
 /* ---------- Standort ---------- */
 $('locBtn').onclick=()=>{
@@ -653,7 +700,7 @@ $('locBtn').onclick=()=>{
 
 /* ---------- Takt ---------- */
 let moveTimer=null;
-map.on('moveend',()=>{const c=map.getCenter();store.set('view',{c:[c.lat,c.lng],z:map.getZoom()});clearTimeout(moveTimer);moveTimer=setTimeout(loadTrips,400);});
+map.on('moveend',()=>{const c=map.getCenter();store.set('view',{c:[c.lat,c.lng],z:map.getZoom()});if(state.sel&&state.sel.follow&&map.getZoom()===loadedZoom)return;clearTimeout(moveTimer);moveTimer=setTimeout(()=>loadTrips(true),400);});
 map.on('dragstart',()=>{if(state.sel&&state.sel.follow){state.sel.follow=false;const b=$('followBtn');if(b)b.setAttribute('aria-pressed','false');}});
 setInterval(()=>{if(!document.hidden)render();},1000);
 setInterval(()=>{loadTrips();if(state.sel)loadTrip();if(state.sheet==='dep')renderDepartures();},30000);
