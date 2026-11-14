@@ -251,6 +251,17 @@ function legSpeed(trip,i){
 /* ===== /PURE ===== */
 
 const API='https://api.transitous.org';
+/* Browsersprachen (z. B. de-DE, en-US -> de,en): Haltestellennamen kommen in dieser Sprache, wo der Dienst Übersetzungen hat */
+const LANGS=(()=>{
+  const out=[];
+  for(const x of(navigator.languages&&navigator.languages.length?navigator.languages:[navigator.language||'de'])){
+    const b=String(x).toLowerCase().split('-')[0];
+    if(/^[a-z]{2,3}$/.test(b)&&!out.includes(b))out.push(b);
+    if(out.length>=3)break;
+  }
+  return out.length?out:['de'];
+})();
+const LANG_PATH=/^\/api\/v\d+\/(trip|stoptimes|geocode)$/;
 const $=id=>document.getElementById(id);
 const store={get(k,d){try{const v=localStorage.getItem('zr.'+k);return v==null?d:JSON.parse(v);}catch(e){return d;}},set(k,v){try{localStorage.setItem('zr.'+k,JSON.stringify(v));}catch(e){}},del(k){try{localStorage.removeItem('zr.'+k);}catch(e){}}};
 const hhmm=t=>t==null?'–':new Date(t).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
@@ -332,6 +343,7 @@ function paintStopDots(){
 
 async function api(path,params,signal){
   const u=new URL(API+path);
+  if(LANG_PATH.test(path)&&!('language' in params))params={...params,language:LANGS.join(',')};
   for(const[k,v]of Object.entries(params))if(v!=null&&v!=='')u.searchParams.set(k,v);
   const ctl=new AbortController();let timedOut=false;
   const timer=setTimeout(()=>{timedOut=true;ctl.abort();},45000);
@@ -718,7 +730,7 @@ function renderStationPicker(){
     const q=inp.value.trim();if(q.length<2){ul.replaceChildren();return;}
     try{
       const c=map.getCenter();
-      const res=await api('/api/v1/geocode',{text:q,type:'STOP',numResults:8,language:'de',place:c.lat.toFixed(4)+','+c.lng.toFixed(4)});
+      const res=await api('/api/v1/geocode',{text:q,type:'STOP',numResults:8,place:c.lat.toFixed(4)+','+c.lng.toFixed(4)});
       ul.replaceChildren();
       for(const m of(res||[]).filter(m=>m.type==='STOP')){
         const li=el('li'),b=el('button','row');b.type='button';b.style.gridTemplateColumns='minmax(0,1fr)';
@@ -740,7 +752,7 @@ function activeModes(){
   return m.join(',');
 }
 async function fetchDepartures(stop,mode,n){
-  const r=await api('/api/v6/stoptimes',{stopId:stop.id||stop.stopId,center:stop.lat+','+stop.lon,radius:300,n:n||30,mode:mode||undefined,language:'de'});
+  const r=await api('/api/v6/stoptimes',{stopId:stop.id||stop.stopId,center:stop.lat+','+stop.lon,radius:300,n:n||30,mode:mode||undefined});
   return(r.stopTimes||[]).map(s=>({id:s.tripId,name:s.displayName||s.routeShortName||s.tripShortName||'Zug',cat:catOf(s.mode),
     dest:(s.tripTo&&s.tripTo.name)||s.headsign||'',destLL:s.tripTo&&s.tripTo.lat!=null?[s.tripTo.lat,s.tripTo.lon]:null,dep:ms(s.place&&s.place.departure),sdep:ms(s.place&&s.place.scheduledDeparture),
     track:(s.place&&(s.place.track||s.place.scheduledTrack))||'',rt:!!s.realTime,cancelled:!!(s.cancelled||s.tripCancelled)})).filter(d=>d.dep!=null);
@@ -794,7 +806,8 @@ async function renderFavs(){
     const deps=el('div','deps num');deps.appendChild(el('span','hint','Suche nächste Fahrt …'));
     box.append(h,deps);body.appendChild(box);
     fetchDepartures({id:f.stopId,lat:f.lat,lon:f.lon},f.mode,40).then(list=>{
-      const hit=list.filter(d=>norm(d.name)===norm(f.name)&&(!(f.destRaw||f.dest)||d.dest===(f.destRaw||f.dest))).slice(0,3);
+      let hit=list.filter(d=>norm(d.name)===norm(f.name)&&(!(f.destRaw||f.dest)||d.dest===(f.destRaw||f.dest))).slice(0,3);
+      if(!hit.length)hit=list.filter(d=>norm(d.name)===norm(f.name)).slice(0,3);
       deps.replaceChildren();
       if(!hit.length){deps.appendChild(el('span','hint','In den nächsten Abfahrten keine Fahrt dieser Linie gefunden.'));return;}
       for(const d of hit){
