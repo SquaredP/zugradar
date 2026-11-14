@@ -111,9 +111,11 @@ select,.field{background:var(--bg);border:1px solid var(--line);border-radius:8p
 .row .d{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .row .g{color:var(--muted);font-size:13px;white-space:nowrap}
 .row.gone{opacity:.45;text-decoration:line-through}
-.stops li{display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:10px;padding:6px 0;align-items:baseline}
-.stops li.past{color:var(--muted)}
-.stops li.next{font-weight:600}
+.stops .srow{width:100%;display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:10px;padding:9px 0;align-items:baseline;text-align:left;background:none;border:0;border-radius:0}
+.stops li.past .srow{color:var(--muted)}
+.stops li.next .srow{font-weight:600}
+.row.cur{background:color-mix(in srgb,var(--focus) 14%,transparent)}
+.sub{margin:2px 0 -4px;font:600 12px/1 var(--ui);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .stops .g{color:var(--muted);font-size:13px}
 .hint{color:var(--muted);margin:0}
 .fav{border-top:1px solid var(--line);padding:10px 0;display:flex;flex-direction:column;gap:6px}
@@ -250,7 +252,7 @@ function legSpeed(trip,i){
 
 const API='https://api.transitous.org';
 const $=id=>document.getElementById(id);
-const store={get(k,d){try{const v=localStorage.getItem('zr.'+k);return v==null?d:JSON.parse(v);}catch(e){return d;}},set(k,v){try{localStorage.setItem('zr.'+k,JSON.stringify(v));}catch(e){}}};
+const store={get(k,d){try{const v=localStorage.getItem('zr.'+k);return v==null?d:JSON.parse(v);}catch(e){return d;}},set(k,v){try{localStorage.setItem('zr.'+k,JSON.stringify(v));}catch(e){}},del(k){try{localStorage.removeItem('zr.'+k);}catch(e){}}};
 const hhmm=t=>t==null?'–':new Date(t).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
 function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e;}
 function delayEl(min){const s=el('small',min>=3?'late':'ok',min>0?'+'+min:min<0?String(min):'pünktl.');return s;}
@@ -262,8 +264,43 @@ const state={
   onlyStation:false, stationTrips:new Set(), query:'',
   trips:new Map(),            // tripId -> {id,name,cat,segs[]}
   sel:null,err:null,note:null,queryRaw:'',found:[],          // {id,name,cat,trip,follow}
-  tab:'map', sheet:null, lastOk:0
+  tab:'map', sheet:null, lastOk:0, showStops:false, deps:null
 };
+
+/* ---------- Haltestellennamen: Ort ergänzen, wenn der Dienst nur „Hauptbahnhof“ liefert ---------- */
+const GENERIC=/^((haupt)?bahnhof|hbf|bf|busbahnhof|zob|bahnhofsplatz|bahnhofsvorplatz)(\s|$|\()/i;
+const cityCache=store.get('city',{}),cityFail={},cityPending=new Set();let relabelT=null;
+const cityKey=ll=>ll[0].toFixed(3)+','+ll[1].toFixed(3);
+function tidy(n){return String(n||'').replace(/,\s*Hauptbahnhof\b/i,' Hbf').replace(/\bHauptbahnhof\b/,'Hbf');}
+function placeName(name,ll){
+  const raw=String(name||'').trim(),t=tidy(raw);
+  if(!ll||!GENERIC.test(raw))return t;
+  const c=cityCache[cityKey(ll)];
+  if(c)return c+' '+t;
+  wantCity(ll);return t;
+}
+function wantCity(ll){
+  const k=cityKey(ll);
+  if(k in cityCache||cityPending.has(k)||(cityFail[k]&&Date.now()-cityFail[k]<60000))return;
+  cityPending.add(k);
+  api('/api/v1/reverse-geocode',{place:ll[0]+','+ll[1],type:'STOP',numResults:1}).then(r=>{
+    const m=(r||[])[0],a=m&&((m.areas||[]).find(x=>x.default)||(m.areas||[])[0]);
+    cityCache[k]=a&&a.name?a.name:'';store.set('city',cityCache);
+  }).catch(()=>{cityFail[k]=Date.now();}).finally(()=>{
+    cityPending.delete(k);clearTimeout(relabelT);relabelT=setTimeout(relabel,150);
+  });
+}
+function applyNames(trip){
+  for(const s of trip.stops)s.name=placeName(s.raw||s.name,s.ll);
+  const l=trip.stops[trip.stops.length-1];trip.dest=l?l.name:'';
+}
+function relabel(){
+  if(state.sel&&state.sel.trip)applyNames(state.sel.trip);
+  if(state.sheet==='trip')renderTripSheet();
+  else if(state.sheet==='stop')renderStopSheet();
+  else if(state.sheet==='dep')paintDeps();
+  else if(state.sheet==='fav')renderFavs();
+}
 
 /* ---------- Karte ---------- */
 const start=state.station?[state.station.lat,state.station.lon]:[49.4794,8.4699];
@@ -282,7 +319,16 @@ setBase();dark.addEventListener('change',setBase);
 L.tileLayer('https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png',
   {subdomains:'abc',maxZoom:19,opacity:.75,attribution:'Gleise: © OpenRailwayMap · Züge: Transitous'}).addTo(map);
 const markers=new Map();
-let routeLine=null,meMarker=null;
+let routeLine=null,meMarker=null,stopLayer=null,stopDots=[],stopHits=[];
+function clearRoute(){
+  if(routeLine){map.removeLayer(routeLine);routeLine=null;}
+  if(stopLayer){map.removeLayer(stopLayer);stopLayer=null;}
+  stopDots=[];stopHits=[];
+}
+function paintStopDots(){
+  const i=state.sel?state.sel.stopI:null;
+  stopDots.forEach((d,k)=>d.setStyle(k===i?{radius:9,weight:4}:{radius:5,weight:2}));
+}
 
 async function api(path,params,signal){
   const u=new URL(API+path);
@@ -421,7 +467,7 @@ function onMarker(id,m){
 }
 /* Kapsel oben: zeigt den verfolgten Zug, solange das Infoblatt nicht offen ist */
 function paintTrack(){
-  const sel=state.sel,box=$('track'),show=!!sel&&state.sheet!=='trip';
+  const sel=state.sel,box=$('track'),show=!!sel&&state.sheet!=='trip'&&state.sheet!=='stop';
   box.hidden=!show;
   const st=$('status');st.hidden=show&&!st.classList.contains('err');
   if(!show)return;
@@ -442,7 +488,7 @@ $('trackStop').onclick=()=>{clearSel();paintTrack();loadTrips(true);};
 async function selectTrip(id,name,cat){
   state.sel={id,name:name||'Zug',cat:cat||'regio',trip:null,follow:true,jumped:false};
   setTab('map');openSheet('trip');
-  if(routeLine){map.removeLayer(routeLine);routeLine=null;}
+  clearRoute();
   for(const m of markers.values())m._k='';
   render();
   await loadTrip();
@@ -458,7 +504,7 @@ async function loadTrip(){
       rt=rt||!!l.realTime;cancelled=cancelled||!!l.cancelled;
       for(const p of[l.from,...(l.intermediateStops||[]),l.to]){
         const last=stops[stops.length-1];
-        const s={name:p.name,id:p.stopId,ll:[p.lat,p.lon],arr:ms(p.arrival),dep:ms(p.departure),
+        const s={name:p.name,raw:p.name,id:p.stopId,ll:[p.lat,p.lon],arr:ms(p.arrival),dep:ms(p.departure),
           sarr:ms(p.scheduledArrival),sdep:ms(p.scheduledDeparture),track:p.track||p.scheduledTrack||'',cancelled:!!p.cancelled};
         if(last&&last.name===s.name){last.dep=s.dep??last.dep;last.sdep=s.sdep??last.sdep;}else stops.push(s);
       }
@@ -469,10 +515,18 @@ async function loadTrip(){
     if(!stops.length)throw new Error('leer');
     let from=0;
     for(const s of stops){s.idx=coords.length?nearestIndex(coords,s.ll,from):0;from=s.idx;}
-    sel.trip={stops,coords,cum:cumulative(coords),rt,cancelled,dest:stops[stops.length-1].name};
+    sel.trip={stops,coords,cum:cumulative(coords),rt,cancelled,dest:''};applyNames(sel.trip);
     if(routeLine)map.removeLayer(routeLine);
+    if(stopLayer)map.removeLayer(stopLayer);
     const css=getComputedStyle(document.documentElement).getPropertyValue('--'+sel.cat).trim()||'#888';
     routeLine=L.polyline(coords.length>1?coords:stops.map(s=>s.ll),{color:css,weight:4,opacity:.55,interactive:false}).addTo(map);
+    const fill=getComputedStyle(document.documentElement).getPropertyValue('--surface').trim()||'#fff';
+    stopLayer=L.layerGroup().addTo(map);stopDots=[];stopHits=[];
+    stops.forEach((st,i)=>{
+      stopDots.push(L.circleMarker(st.ll,{radius:5,weight:2,color:css,fillColor:fill,fillOpacity:1,interactive:false}).addTo(stopLayer));
+      stopHits.push(L.circleMarker(st.ll,{radius:16,stroke:false,fillColor:css,fillOpacity:.01,bubblingMouseEvents:false}).on('click',()=>showStop(i)).addTo(stopLayer));
+    });
+    paintStopDots();
     if(!sel.jumped){sel.jumped=true;const tp=tripPosition(sel.trip,Date.now());if(tp)map.setView(tp.pos,Math.max(map.getZoom(),12));}
     renderTripSheet();render();
   }catch(e){
@@ -486,37 +540,43 @@ function renderTripSheet(){
   const sel=state.sel;if(!sel||state.sheet!=='trip')return;
   const b=$('shBadge');b.hidden=false;b.className='badge c-'+sel.cat;b.textContent=sel.name;
   $('shTitle').replaceChildren(sel.trip?el('span',null,'nach '):'',sel.trip?sel.trip.dest:'Fahrtverlauf wird geladen …');
-  if(!sel.trip){$('shBody').replaceChildren();return;}
-  const body=$('shBody');body.replaceChildren();
+  const body=$('shBody'),keep=body.scrollTop;
+  body.replaceChildren();
+  if(!sel.trip)return;
   const row=el('div','nowrow');
   row.append(Object.assign(el('div','now'),{id:'tripNow'}),Object.assign(el('div','speed num'),{id:'tripSpeed'}));
   body.appendChild(row);
   const acts=el('div','acts');
   const fol=el('button','btn','Karte folgt dem Zug');fol.type='button';fol.id='followBtn';fol.setAttribute('aria-pressed',String(sel.follow));
   fol.onclick=()=>{sel.follow=!sel.follow;fol.setAttribute('aria-pressed',String(sel.follow));render();};
-  const tog=el('button','btn','Halte anzeigen');tog.type='button';tog.id='stopsBtn';tog.setAttribute('aria-expanded','false');
+  const tog=el('button','btn',state.showStops?'Halte ausblenden':'Halte anzeigen');tog.type='button';tog.id='stopsBtn';tog.setAttribute('aria-expanded',String(!!state.showStops));
   acts.append(fol,tog);body.appendChild(acts);
-  const ul=el('ul','rows stops num');ul.id='stopList';ul.hidden=true;body.appendChild(ul);
-  tog.onclick=()=>{ul.hidden=!ul.hidden;tog.setAttribute('aria-expanded',String(!ul.hidden));tog.textContent=ul.hidden?'Halte anzeigen':'Halte ausblenden';};
-  /* Linie merken */
+  const hint=el('p','hint','Halt antippen: Die Karte springt dorthin, dazu die nächsten Abfahrten.');hint.hidden=!state.showStops;body.appendChild(hint);
+  const ul=el('ul','rows stops num');ul.id='stopList';ul.hidden=!state.showStops;body.appendChild(ul);
+  tog.onclick=()=>{state.showStops=!state.showStops;ul.hidden=hint.hidden=!state.showStops;tog.setAttribute('aria-expanded',String(state.showStops));tog.textContent=state.showStops?'Halte ausblenden':'Halte anzeigen';};
+  /* Linie merken: Einstieg ist der Halt, der meinem Bahnhof am nächsten liegt */
   const fb=el('div','favbox');const lab=el('label',null,'Diese Linie für tägliche Fahrten merken, Einstieg:');lab.htmlFor='favStop';
   const selEl=el('select');selEl.id='favStop';
-  const now=Date.now();let pre=-1;
-  sel.trip.stops.slice(0,-1).forEach((s,i)=>{
+  const now=Date.now(),cand=sel.trip.stops.slice(0,-1);let pre=-1,bd=600;
+  cand.forEach((s,i)=>{
     const o=el('option',null,s.name);o.value=String(i);selEl.appendChild(o);
-    if(state.station&&(s.id===state.station.id||s.name===state.station.name))pre=i;
-    else if(pre<0&&(s.dep??s.arr)>now)pre=i;
+    if(state.station){
+      if(s.id===state.station.id){pre=i;bd=-1;}
+      else{const d=dist(s.ll,[state.station.lat,state.station.lon]);if(d<bd){bd=d;pre=i;}}
+    }
   });
-  selEl.value=String(Math.max(0,pre));
+  if(pre<0)pre=Math.max(0,cand.findIndex(s=>(s.dep??s.arr)>now));
+  selEl.value=String(pre);
   const add=el('button','btn pri','Merken');add.type='button';add.id='favAdd';
   add.onclick=()=>{
-    const s=sel.trip.stops[+selEl.value];if(!s)return;
-    const f={name:sel.name,dest:sel.trip.dest,mode:sel.mode||'',cat:sel.cat,stopId:s.id,stopName:s.name,lat:s.ll[0],lon:s.ll[1]};
+    const s=sel.trip.stops[+selEl.value],last=sel.trip.stops[sel.trip.stops.length-1];if(!s)return;
+    const f={name:sel.name,dest:sel.trip.dest,destRaw:last.raw,destLL:last.ll,mode:sel.mode||'',cat:sel.cat,stopId:s.id,stopName:s.name,lat:s.ll[0],lon:s.ll[1]};
     if(!state.favs.some(x=>x.name===f.name&&x.dest===f.dest&&x.stopName===f.stopName)){state.favs.push(f);store.set('favs',state.favs);}
     add.textContent='Gemerkt';add.disabled=true;
   };
   fb.append(lab,selEl,add);body.appendChild(fb);
   renderTripStatus(true);
+  body.scrollTop=keep;
 }
 let lastStopKey='',tripRetry=null;
 function renderTripStatus(force){
@@ -544,20 +604,66 @@ function renderTripStatus(force){
     if(tp.state==='run'&&!sel.trip.cancelled){const v=legSpeed(sel.trip,tp.i);if(v)sp.append(String(v),el('small',null,'km/h · Ø bis Halt'));}
     else if(tp.state==='stop'||tp.state==='wait')sp.append('Halt');
   }
-  const key=sel.id+'|'+tp.i+'|'+tp.state+'|'+st.map(s=>s.arr).join();
+  const key=sel.id+'|'+tp.i+'|'+tp.state+'|'+st.map(s=>s.arr+s.name).join();
   if(!force&&key===lastStopKey)return;lastStopKey=key;
   const ul=$('stopList');if(!ul)return;ul.replaceChildren();
   st.forEach((s,i)=>{
     const li=el('li',i<nextI&&tp.state!=='wait'?'past':i===nextI?'next':'');
+    const b=el('button','srow');b.type='button';
     const t=el('span','t');const real=s.arr??s.dep,sch=s.sarr??s.sdep;t.textContent=hhmm(real)+' ';
     if(sel.trip.rt&&i>=nextI)t.appendChild(delayEl(delayMin(real,sch)));
-    li.append(t,el('span',null,s.name+(s.cancelled?' (entfällt)':'')),el('span','g',s.track?'Gl. '+s.track:''));
-    ul.appendChild(li);
+    b.append(t,el('span',null,s.name+(s.cancelled?' (entfällt)':'')),el('span','g',s.track?'Gl. '+s.track:''));
+    b.onclick=()=>showStop(i);
+    li.appendChild(b);ul.appendChild(li);
   });
 }
 function clearSel(){
-  state.sel=null;if(routeLine){map.removeLayer(routeLine);routeLine=null;}
+  state.sel=null;clearRoute();
   for(const m of markers.values())m._k='';render();
+}
+
+/* ---------- Haltestelle antippen ---------- */
+function showStop(i){
+  const sel=state.sel;if(!sel||!sel.trip||!sel.trip.stops[i])return;
+  sel.follow=false;sel.stopI=i;
+  map.setView(sel.trip.stops[i].ll,Math.max(map.getZoom(),13));
+  openSheet('stop');paintStopDots();
+}
+function depRow(d,cls){
+  const li=el('li'),b=el('button','row'+(d.cancelled?' gone':'')+(cls?' '+cls:''));b.type='button';
+  const t=el('span','t',hhmm(d.sdep??d.dep));if(d.rt&&!d.cancelled)t.appendChild(delayEl(delayMin(d.dep,d.sdep)));
+  const dest=placeName(d.dest,d.destLL);
+  b.append(t,el('span','badge c-'+d.cat,d.name),el('span','d',d.cancelled?dest+' (fällt aus)':dest),el('span','g',d.track?'Gl. '+d.track:''));
+  b.onclick=()=>selectTrip(d.id,d.name,d.cat);
+  li.appendChild(b);return li;
+}
+function renderStopSheet(){
+  const sel=state.sel;if(!sel||!sel.trip||state.sheet!=='stop')return;
+  const i=sel.stopI,st=sel.trip.stops,s=st[i];if(!s){openSheet('trip');return;}
+  const bg=$('shBadge');bg.hidden=false;bg.className='badge c-'+sel.cat;bg.textContent=sel.name;
+  $('shTitle').textContent=s.name;
+  const body=$('shBody');body.replaceChildren();
+  const late=(r,p)=>{const d=sel.trip.rt?delayMin(r,p):0;return d>0?' (+'+d+')':'';};
+  const parts=[];
+  if(i>0&&s.arr!=null)parts.push('an '+hhmm(s.arr)+late(s.arr,s.sarr));
+  if(i<st.length-1&&s.dep!=null)parts.push('ab '+hhmm(s.dep)+late(s.dep,s.sdep));
+  if(s.track)parts.push('Gl. '+s.track);
+  const info=el('div','now',parts.length?'Dieser Zug: '+parts.join(' · '):'');
+  const acts=el('div','acts');
+  const back=el('button','btn pri','Zurück zum Zug');back.type='button';back.id='stopBack';
+  back.onclick=()=>{sel.follow=true;sel.stopI=null;paintStopDots();openSheet('trip');render();};
+  const mk=el('button','btn','Als Mein Bahnhof');mk.type='button';mk.id='stopSetStation';
+  if(state.station&&state.station.id===s.id){mk.textContent='Ist mein Bahnhof';mk.disabled=true;}
+  mk.onclick=()=>{state.station={id:s.id,name:s.name,lat:s.ll[0],lon:s.ll[1]};store.set('station',state.station);paintStation();mk.textContent='Mein Bahnhof gesetzt';mk.disabled=true;};
+  acts.append(back,mk);
+  const ul=el('ul','rows num');ul.id='stopDeps';ul.appendChild(el('li','hint','Lade Abfahrten …'));
+  body.append(info,acts,el('p','sub','Nächste Abfahrten hier'),ul);
+  fetchDepartures({id:s.id,lat:s.ll[0],lon:s.ll[1]},sel.cat==='stadt'?undefined:'RAIL',10).then(list=>{
+    if(state.sheet!=='stop'||state.sel!==sel||sel.stopI!==i)return;
+    ul.replaceChildren();
+    for(const d of list)ul.appendChild(depRow(d,d.id===sel.id?'cur':''));
+    if(!ul.children.length)ul.appendChild(el('li','hint','Keine Abfahrten gefunden.'));
+  }).catch(()=>{if(state.sheet==='stop')ul.replaceChildren(el('li','hint','Abfahrten gerade nicht abrufbar.'));});
 }
 
 /* ---------- Blatt und Reiter ---------- */
@@ -568,12 +674,13 @@ function openSheet(kind){
   if(kind==='fav')renderFavs();
   if(kind==='station')renderStationPicker();
   if(kind==='find')renderFind();
+  if(kind==='stop')renderStopSheet();
   map.invalidateSize();
   paintTrack();
 }
 /* Schließen klappt nur das Blatt ein. Der Zug bleibt verfolgt, bis die Kapsel oben mit × beendet wird. */
 function closeSheet(){
-  const wasTrip=state.sheet==='trip';
+  const wasTrip=state.sheet==='trip'||state.sheet==='stop';
   state.sheet=null;$('sheet').hidden=true;setTab('map',true);map.invalidateSize();
   paintTrack();
   if(wasTrip)loadTrips(true);
@@ -599,8 +706,14 @@ function renderStationPicker(){
   const inp=el('input','field');inp.id='stationQ';inp.type='search';inp.placeholder='Bahnhof oder Haltestelle';inp.autocomplete='off';
   inp.setAttribute('aria-label','Bahnhof suchen');
   const ul=el('ul','rows');ul.id='stationRes';
-  body.append(inp,ul);
-  if(state.station)body.appendChild(el('p','hint','Aktuell: '+state.station.name));
+  body.appendChild(inp);
+  if(state.station){
+    const cur=el('div','acts');cur.append(el('span','hint','Aktuell: '+state.station.name));
+    const rs=el('button','btn','Zurücksetzen');rs.type='button';rs.id='stationReset';
+    rs.onclick=()=>{state.station=null;store.del('station');state.onlyStation=false;state.stationTrips=new Set();state.deps=null;paintStation();render();renderStationPicker();};
+    cur.appendChild(rs);body.appendChild(cur);
+  }else body.appendChild(el('p','hint','Kein Bahnhof gewählt. Suche oben nach deinem Bahnhof.'));
+  body.appendChild(ul);
   inp.oninput=()=>{clearTimeout(geoTimer);geoTimer=setTimeout(async()=>{
     const q=inp.value.trim();if(q.length<2){ul.replaceChildren();return;}
     try{
@@ -629,7 +742,7 @@ function activeModes(){
 async function fetchDepartures(stop,mode,n){
   const r=await api('/api/v6/stoptimes',{stopId:stop.id||stop.stopId,center:stop.lat+','+stop.lon,radius:300,n:n||30,mode:mode||undefined,language:'de'});
   return(r.stopTimes||[]).map(s=>({id:s.tripId,name:s.displayName||s.routeShortName||s.tripShortName||'Zug',cat:catOf(s.mode),
-    dest:(s.tripTo&&s.tripTo.name)||s.headsign||'',dep:ms(s.place&&s.place.departure),sdep:ms(s.place&&s.place.scheduledDeparture),
+    dest:(s.tripTo&&s.tripTo.name)||s.headsign||'',destLL:s.tripTo&&s.tripTo.lat!=null?[s.tripTo.lat,s.tripTo.lon]:null,dep:ms(s.place&&s.place.departure),sdep:ms(s.place&&s.place.scheduledDeparture),
     track:(s.place&&(s.place.track||s.place.scheduledTrack))||'',rt:!!s.realTime,cancelled:!!(s.cancelled||s.tripCancelled)})).filter(d=>d.dep!=null);
 }
 async function renderDepartures(){
@@ -651,19 +764,17 @@ async function renderDepartures(){
     if(!state.cats.size){ul.replaceChildren(el('li','hint','Oben mindestens eine Zuggattung einschalten.'));return;}
     const deps=await fetchDepartures(state.station,activeModes(),30);
     if(state.sheet!=='dep')return;
-    state.stationTrips=new Set(deps.map(d=>d.id));
-    ul.replaceChildren();
-    for(const d of deps){
-      if(state.query&&!norm(d.name).includes(state.query))continue;
-      const li=el('li'),b=el('button','row'+(d.cancelled?' gone':''));b.type='button';
-      const t=el('span','t',hhmm(d.sdep??d.dep));if(d.rt&&!d.cancelled)t.appendChild(delayEl(delayMin(d.dep,d.sdep)));
-      b.append(t,el('span','badge c-'+d.cat,d.name),el('span','d',d.cancelled?d.dest+' (fällt aus)':d.dest),el('span','g',d.track?'Gl. '+d.track:''));
-      b.onclick=()=>selectTrip(d.id,d.name,d.cat);
-      li.appendChild(b);ul.appendChild(li);
-    }
-    if(!ul.children.length)ul.appendChild(el('li','hint','Keine Abfahrten für diese Auswahl gefunden.'));
+    state.stationTrips=new Set(deps.map(d=>d.id));state.deps=deps;
+    paintDeps();
     if(state.onlyStation)render();
   }catch(e){ul.replaceChildren(el('li','hint','Abfahrten gerade nicht abrufbar. Neuer Versuch in 30 s.'));}
+}
+
+function paintDeps(){
+  const ul=$('depList');if(!ul||!state.deps||state.sheet!=='dep')return;
+  ul.replaceChildren();
+  for(const d of state.deps){if(state.query&&!norm(d.name).includes(state.query))continue;ul.appendChild(depRow(d));}
+  if(!ul.children.length)ul.appendChild(el('li','hint','Keine Abfahrten für diese Auswahl gefunden.'));
 }
 
 /* ---------- Meine Linien ---------- */
@@ -676,14 +787,14 @@ async function renderFavs(){
   }
   state.favs.forEach((f,i)=>{
     const box=el('div','fav'),h=el('div','h'),p=el('p');
-    p.append(f.dest?'nach '+f.dest:'',el('small',null,'ab '+f.stopName));
+    p.append(f.dest?'nach '+(f.destLL?placeName(f.destRaw||f.dest,f.destLL):tidy(f.dest)):'',el('small',null,'ab '+f.stopName));
     const rm=el('button','x','Entfernen');rm.type='button';
     rm.onclick=()=>{state.favs.splice(i,1);store.set('favs',state.favs);renderFavs();};
     h.append(el('span','badge c-'+f.cat,f.name),p,rm);
     const deps=el('div','deps num');deps.appendChild(el('span','hint','Suche nächste Fahrt …'));
     box.append(h,deps);body.appendChild(box);
     fetchDepartures({id:f.stopId,lat:f.lat,lon:f.lon},f.mode,40).then(list=>{
-      const hit=list.filter(d=>norm(d.name)===norm(f.name)&&(!f.dest||d.dest===f.dest)).slice(0,3);
+      const hit=list.filter(d=>norm(d.name)===norm(f.name)&&(!(f.destRaw||f.dest)||d.dest===(f.destRaw||f.dest))).slice(0,3);
       deps.replaceChildren();
       if(!hit.length){deps.appendChild(el('span','hint','In den nächsten Abfahrten keine Fahrt dieser Linie gefunden.'));return;}
       for(const d of hit){
