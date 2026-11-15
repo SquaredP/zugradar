@@ -422,11 +422,25 @@ function iconFor(t,seg,sel){
 function render(){
   const now=Date.now();let shown=0;const seen=new Set();
   const list=[...state.trips.values()].filter(passes).sort((a,b)=>CAT_ORDER.indexOf(a.cat)-CAT_ORDER.indexOf(b.cat));
+  /* Dieselbe Zugnummer kommt oft doppelt aus verschiedenen Fahrplanquellen (einmal mit, einmal ohne Echtzeit).
+     Pro Zugname und Ort (< 2 km) bleibt nur ein Eintrag, bevorzugt der mit Echtzeit. */
+  const cand=[];
   for(const t of list){
-    if(shown>=350)break;
     if(state.sel&&state.sel.id===t.id)continue;
     const p=segmentPosition(t.segs,now);
-    if(!p.pos)continue;
+    if(p.pos)cand.push({t,p});
+  }
+  cand.sort((x,y)=>(y.p.seg.rt?1:0)-(x.p.seg.rt?1:0));
+  const kept=[],byName=new Map();
+  const selLL=state.sel&&(state.sel.lastPos||null),selName=state.sel&&state.sel.name;
+  for(const c of cand){
+    const key=c.t.name,arr=byName.get(key)||[];
+    if(arr.some(q=>dist(q,c.p.pos)<2000))continue;
+    if(selLL&&key===selName&&dist(selLL,c.p.pos)<2000)continue;
+    arr.push(c.p.pos);byName.set(key,arr);kept.push(c);
+  }
+  for(const{t,p}of kept){
+    if(shown>=350)break;
     seen.add(t.id);shown++;
     const ic=iconFor(t,p.seg,false);
     let m=markers.get(t.id);
