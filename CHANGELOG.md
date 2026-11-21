@@ -9,6 +9,8 @@ Die Seite liest diese Datei selbst und zeigt nach einem Update einmalig einen Hi
 - Nächster Halt und Ziel stehen mit Uhrzeit direkt auf der Karte
 - Neuer Knopf „Strecke voraus“ zeigt den restlichen Weg bis zum Ziel
 - „Was ist neu?“ unter „Meine Linien“ informiert über neue Funktionen
+- Neu: „Über Zugradar“ unter „Meine Linien“ erklärt Datenquellen, Genauigkeit und Datenschutz
+- Karte und Schrift werden jetzt direkt von dieser Seite geladen, ohne Anfrage an Google oder andere Drittanbieter
 
 ## 2026-11-15
 

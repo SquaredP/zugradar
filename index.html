@@ -8,9 +8,16 @@
 <meta name="theme-color" content="#f3f5f4" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#14181b" media="(prefers-color-scheme: dark)">
 <title>Zugradar</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600;700&display=swap">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https://server.arcgisonline.com https://*.tiles.openrailwaymap.org; connect-src 'self' https://api.transitous.org; base-uri 'none'; form-action 'none'">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
 <style>
+/* Schriften liegen im Repo (vendor/fonts), damit beim Laden keine Anfrage an Google geht. */
+@font-face{font-family:"Barlow";font-weight:400;font-display:swap;src:url(vendor/fonts/barlow-latin-400-normal.woff2) format("woff2")}
+@font-face{font-family:"Barlow";font-weight:500;font-display:swap;src:url(vendor/fonts/barlow-latin-500-normal.woff2) format("woff2")}
+@font-face{font-family:"Barlow";font-weight:600;font-display:swap;src:url(vendor/fonts/barlow-latin-600-normal.woff2) format("woff2")}
+@font-face{font-family:"Barlow Condensed";font-weight:600;font-display:swap;src:url(vendor/fonts/barlow-condensed-latin-600-normal.woff2) format("woff2")}
+@font-face{font-family:"Barlow Condensed";font-weight:700;font-display:swap;src:url(vendor/fonts/barlow-condensed-latin-700-normal.woff2) format("woff2")}
 /* Layout: Karte füllt den Schirm; oben Bahnhof + Filterchips, unten Reiter und ein Blatt mit Abfahrtstafel-Optik. */
 :root{
   --bg:#f3f5f4; --surface:#ffffff; --line:#d5dbd9; --fg:#16201f; --muted:#5d6b69;
@@ -68,7 +75,11 @@ button{cursor:pointer}
 .newsbox h3{font:600 15px/1.2 var(--ui);margin:14px 0 4px}
 .newsbox h3:first-child{margin-top:0}
 .newsbox ul{margin:0;padding-left:18px}.newsbox li{margin:3px 0}
-.newslink{margin-top:14px;background:none;border:0;padding:6px 0;color:var(--focus);text-decoration:underline;font-weight:500}
+.newslink{background:none;border:0;padding:6px 0;color:var(--focus);text-decoration:underline;font-weight:500}
+.foot{display:flex;flex-wrap:wrap;gap:4px 18px;margin-top:14px}
+.about h3{font:600 15px/1.2 var(--ui);margin:18px 0 4px}.about h3:first-child{margin-top:0}
+.about p{margin:4px 0}.about ul{margin:4px 0;padding-left:18px}.about li{margin:3px 0}
+.about a{color:var(--focus)}
 .status.err{color:var(--late);border-color:var(--late)}
 
 /* Zugmarken auf der Karte */
@@ -182,7 +193,7 @@ nav button[aria-current="true"]{color:var(--fg);border-top-color:var(--fg)}
   </nav>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="vendor/leaflet/leaflet.js"></script>
 <script>
 /* ===== PURE ===== */
 const CATS={
@@ -777,6 +788,7 @@ function openSheet(kind){
   if(kind==='find')renderFind();
   if(kind==='stop')renderStopSheet();
   if(kind==='news')renderNews();
+  if(kind==='about')renderAbout();
   map.invalidateSize();
   paintTrack();
 }
@@ -952,9 +964,44 @@ function renderNews(){
   body.appendChild(box);markNewsSeen();
 }
 function newsLink(){
+  const f=el('div','foot');
   const b=el('button','newslink','Was ist neu?');b.type='button';
   b.onclick=async()=>{if(!news)await loadNews();openSheet('news');};
-  return b;
+  const a=el('button','newslink','Über Zugradar');a.type='button';a.onclick=()=>openSheet('about');
+  f.append(b,a);return f;
+}
+/* ---------- Über Zugradar: Herkunft der Daten, Genauigkeit, Datenschutz ---------- */
+function renderAbout(){
+  $('shTitle').textContent='Über Zugradar';
+  const body=$('shBody');body.replaceChildren();
+  const box=el('div','about');
+  const sec=(h,...nodes)=>{box.appendChild(el('h3',null,h));for(const n of nodes)box.appendChild(n);};
+  const p=t=>el('p',null,t);
+  const ul=items=>{const u=el('ul');for(const i of items)u.appendChild(el('li',null,i));return u;};
+  const link=(t,href)=>{const a=el('a',null,t);a.href=href;a.target='_blank';a.rel='noopener noreferrer';return a;};
+  sec('Was ist das?',
+    p('Eine private, kostenlose und werbefreie Karte, die zeigt, wo Züge gerade auf der Strecke sind. Sie ist ein Hobbyprojekt ohne kommerzielle Absicht und steht in keiner Verbindung zur Deutschen Bahn oder zu einem anderen Verkehrsunternehmen.'));
+  const src=p('Der Quelltext ist offen (MIT-Lizenz): ');src.append(link('github.com/SquaredP/zugradar','https://github.com/SquaredP/zugradar'),'. Dort kannst du ihn prüfen und Fehler melden.');
+  box.appendChild(src);
+  sec('Wie genau sind die Positionen?',
+    p('Berechnet, nicht per GPS gemessen. Die Seite nimmt die Fahrplan- und Prognosezeiten für jeden Halt und setzt den Zug entsprechend zwischen zwei Halten auf die Strecke. Gestrichelte Züge haben keine Echtzeitdaten, dort gilt nur der Fahrplan. Die Geschwindigkeit ist der Durchschnitt zwischen zwei Halten.'),
+    p('Bei Störungen, Umleitungen oder Ausfällen, die noch nicht in den Daten stehen, kann ein Zug anderswo sein als angezeigt. Für Anschlüsse und Abfahrten gilt immer die Auskunft des Verkehrsunternehmens, z. B. DB Navigator oder die Anzeige am Bahnsteig. Eine Gewähr gibt es nicht.'));
+  sec('Datenquellen',
+    ul(['Züge, Halte, Abfahrten: Transitous (transitous.org), aufbereitet aus Fahrplan- und Echtzeitdaten der Verkehrsunternehmen, in Deutschland über DELFI. Nur für nicht-kommerzielle Nutzung.',
+        'Karte: © Esri, © OpenStreetMap-Mitwirkende',
+        'Gleisnetz: © OpenRailwayMap / OpenStreetMap-Mitwirkende',
+        'Kartenbibliothek Leaflet (BSD-2), Schrift Barlow (SIL OFL), beides liegt direkt auf dieser Seite.']));
+  sec('Datenschutz',
+    p('Kein Konto, keine Cookies, keine Werbung, keine Statistik und kein Tracking. Es gibt keinen eigenen Server, der etwas von dir speichert.'),
+    p('Nur in deinem Browser gespeichert, nie gesendet: Mein Bahnhof, Filter, Kartenausschnitt, gemerkte Linien und welche Neuerungen du gesehen hast. Löschen geht über die Website-Daten des Browsers.'),
+    p('Beim Benutzen fragt dein Browser direkt bei diesen Diensten an, die dabei deine IP-Adresse sehen:'),
+    ul(['Transitous (api.transitous.org): sichtbarer Kartenausschnitt, gewählte Zug-ID, Suchtext bei der Bahnhofssuche',
+        'Esri und OpenRailwayMap: Kartenkacheln des sichtbaren Bereichs',
+        'GitHub Pages: liefert diese Seite aus und führt eigene Zugriffsprotokolle']),
+    p('Dein Standort wird nur abgefragt, wenn du den Standortknopf tippst. Er bleibt im Browser. Weil die Karte dorthin springt, geht danach der sichtbare Kartenausschnitt an Transitous.'));
+  sec('Fehler oder Wünsche?',
+    (()=>{const q=p('Bitte als ');q.append(link('Issue auf GitHub','https://github.com/SquaredP/zugradar/issues'),' melden.');return q;})());
+  body.appendChild(box);
 }
 $('newsOpen').onclick=()=>openSheet('news');
 $('newsX').onclick=markNewsSeen;

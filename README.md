@@ -14,6 +14,7 @@ Mobile Live-Karte, die zeigt, wo sich Züge gerade auf der Strecke befinden – 
 - **Geschwindigkeit:** Durchschnitt zwischen zwei Halten aus Strecke und Echtzeit-Fahrzeit.
 - **Meine Linien:** Linien für tägliche Fahrten merken, mit Einstiegshalt. Gespeichert lokal im Browser.
 - Hell- und Dunkelmodus, Haltestellennamen in der Browsersprache.
+- **Über Zugradar:** Herkunft der Daten, Genauigkeit und Datenschutz in der App.
 - **Was ist neu:** Nach einem Update erscheint einmalig ein Hinweis, die ganze Liste steht unter „Meine Linien“ → „Was ist neu?“.
 
 ## Wie genau sind die Positionen?
@@ -26,12 +27,18 @@ Alle Änderungen stehen in [CHANGELOG.md](CHANGELOG.md). Die Seite liest diese D
 
 ## Technik
 
-- Eine einzelne statische Datei (`index.html`) mit Vanilla JavaScript, kein Build-Schritt.
-- [Leaflet](https://leafletjs.com) für die Karte, Grundkarte von Esri, Gleise von OpenRailwayMap.
+- Eine statische Seite (`index.html`) mit Vanilla JavaScript, kein Build-Schritt.
+- [Leaflet](https://leafletjs.com) (BSD-2) und die Schrift Barlow (SIL OFL) liegen in `vendor/`, mit ihren Lizenzen. Beim Laden der Seite gibt es dadurch keine Anfrage an Drittanbieter-CDNs oder Google Fonts.
+- Grundkarte von Esri, Gleise von OpenRailwayMap.
+- Eine Content-Security-Policy im HTML erlaubt Verbindungen nur zu `api.transitous.org` und den beiden Kartenanbietern.
 - Daten über die öffentliche [MOTIS-API](https://api.transitous.org) von Transitous (`map/trips`, `trip`, `stoptimes`, `geocode`).
 - Einstellungen und gemerkte Linien liegen im `localStorage` des Browsers, es gibt kein Backend.
 
 Lokal ausprobieren: `index.html` über einen beliebigen Webserver ausliefern, z. B. `python3 -m http.server`, und `http://localhost:8000` öffnen.
+
+## Datenschutz
+
+Kein Konto, keine Cookies, kein Tracking, kein eigener Server. Bahnhof, Filter, Kartenausschnitt und gemerkte Linien bleiben im Browser. Beim Benutzen sehen Transitous (Kartenausschnitt, Zug-ID, Suchtext), Esri und OpenRailwayMap (Kartenkacheln) sowie GitHub Pages (Auslieferung der Seite) die IP-Adresse. Details stehen in der App unter „Meine Linien“ → „Über Zugradar“.
 
 ## Daten und Nutzungsbedingungen
 
