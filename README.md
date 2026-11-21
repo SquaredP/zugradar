@@ -10,6 +10,7 @@ Mobile Live-Karte, die zeigt, wo sich Züge gerade auf der Strecke befinden – 
 - **Datensparsam nach Zoomstufe:** Fernverkehr ab Länderebene, Regional ab Bundeslandebene, S-Bahn ab Regionsebene, Tram/Bus nur in der Stadt (auf größeren Bildschirmen etwas später). Es werden nur Züge im Bild geladen und gezeichnet, überlappende Namen werden ausgeblendet.
 - **Filter** nach Fernverkehr, Regionalverkehr, S-Bahn und Tram/U-Bahn sowie Suche nach Linie oder Zugnummer (z. B. `ICE 774`). Enter sucht im ganzen Netz.
 - **Mein Bahnhof:** nächste Abfahrten an einem gewählten Bahnhof, optional nur diese Züge auf der Karte. Zurücksetzbar.
+- **Bedienung:** Doppeltipp (Doppelklick) auf die Karte zoomt eine Stufe näher.
 - **Zug verfolgen:** Die Karte folgt dem Zug. Wie bei einem Navi ist die Strecke voraus kräftig, der gefahrene Teil grau, nächster Halt und Ziel sind mit Uhrzeit beschriftet. „Strecke voraus“ zeigt den ganzen restlichen Weg.
 - **Fahrtverlauf:** alle Halte mit Ankunft, Abfahrt, Gleis und Verspätung. Halte sind antippbar und zeigen die nächsten Abfahrten dort.
 - **Geschwindigkeit:** Durchschnitt zwischen zwei Halten aus Strecke und Echtzeit-Fahrzeit.

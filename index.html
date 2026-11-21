@@ -34,7 +34,7 @@
 }}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
-body{background:var(--bg);color:var(--fg);font:15px/1.35 var(--ui);overflow:hidden;-webkit-tap-highlight-color:transparent}
+body{background:var(--bg);color:var(--fg);font:15px/1.35 var(--ui);overflow:hidden;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 button,input,select{font:inherit;color:inherit}
 button{cursor:pointer}
 :focus-visible{outline:2px solid var(--focus);outline-offset:2px}
@@ -610,7 +610,7 @@ function render(){
   }
   if(state.sel&&state.sel.follow){
     const m=markers.get(state.sel.id);
-    if(m)map.panTo(m.getLatLng(),{animate:true,duration:.8});
+    if(m&&!zoomBusy)map.panTo(m.getLatLng(),{animate:true,duration:.8});
   }
   paintRoute();
   if(state.sheet==='trip')renderTripStatus();
@@ -1114,6 +1114,40 @@ $('locBtn').onclick=()=>{
     map.setView(ll,Math.max(map.getZoom(),13));
   },()=>setStatus('Standort nicht verfügbar. Freigabe im Browser prüfen (nur über https).',true),{enableHighAccuracy:true,timeout:10000});
 };
+
+/* ---------- Doppeltipp: eine Zoomstufe näher, wie beim Schiffsradar ----------
+   Eigene Geste statt Leaflet-Standard: robust gegen die Doppeltipp-Vergrößerung von iOS und gegen das Nachführen beim Verfolgen.
+   Maus: Doppelklick. Berührung: zwei kurze Tipps ohne Wischen nahe beieinander; Zwei-Finger-Gesten zählen nicht. */
+let zoomBusy=false;
+map.doubleClickZoom.disable();
+function zoomIn(containerPt){
+  const z=map.getZoom(),to=Math.min(z+1,map.getMaxZoom());if(to<=z)return;
+  zoomBusy=true;
+  /* Beim Verfolgen bleibt der Zug in der Mitte, sonst wird um die Tippstelle gezoomt */
+  if(state.sel&&state.sel.follow)map.setZoom(to);else map.setZoomAround(containerPt,to);
+  setTimeout(()=>{zoomBusy=false;},500);
+}
+(()=>{
+  const el=map.getContainer(),down=new Map();let multi=false,last=null;
+  const skip=t=>t.closest&&t.closest('.leaflet-control, .leaflet-popup, .leaflet-tooltip');
+  el.addEventListener('pointerdown',e=>{
+    if(e.pointerType==='mouse')return;
+    down.set(e.pointerId,{x:e.clientX,y:e.clientY,t:e.timeStamp});
+    if(down.size>1)multi=true;
+  });
+  const end=e=>{
+    if(e.pointerType==='mouse')return;
+    const d=down.get(e.pointerId);down.delete(e.pointerId);
+    if(!down.size){const was=multi;multi=false;if(was){last=null;return;}}else return;
+    if(!d||skip(e.target))return;
+    if(e.type==='pointercancel'||Math.hypot(e.clientX-d.x,e.clientY-d.y)>12||e.timeStamp-d.t>350){last=null;return;}
+    if(last&&e.timeStamp-last.t<400&&Math.hypot(e.clientX-last.x,e.clientY-last.y)<40){
+      last=null;zoomIn(map.mouseEventToContainerPoint(e));
+    }else last={x:e.clientX,y:e.clientY,t:e.timeStamp};
+  };
+  el.addEventListener('pointerup',end);el.addEventListener('pointercancel',end);
+  el.addEventListener('dblclick',e=>{if(!skip(e.target))zoomIn(map.mouseEventToContainerPoint(e));});
+})();
 
 /* ---------- Takt ---------- */
 let moveTimer=null;
