@@ -61,6 +61,14 @@ button{cursor:pointer}
 .tbtn{min-width:0;background:none;border:0;padding:9px 4px 9px 14px;font:600 14px/1.2 var(--ui);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
 .tbtn::before{content:"";display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--c);margin-right:8px}
 .tstop{flex:none;background:none;border:0;padding:0 14px;font-size:22px;line-height:1;color:var(--muted)}
+.news{align-self:flex-start;max-width:100%;display:flex;align-items:center;gap:2px;background:var(--surface);border:1px solid var(--focus);border-radius:999px;box-shadow:0 1px 4px rgba(0,0,0,.12);font-size:13px;overflow:hidden}
+.news button{background:none;border:0;padding:6px 10px;color:var(--fg);text-align:left;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.news b{color:var(--focus);font-weight:600}
+.news .nx{color:var(--muted);padding:6px 12px 6px 6px}
+.newsbox h3{font:600 15px/1.2 var(--ui);margin:14px 0 4px}
+.newsbox h3:first-child{margin-top:0}
+.newsbox ul{margin:0;padding-left:18px}.newsbox li{margin:3px 0}
+.newslink{margin-top:14px;background:none;border:0;padding:6px 0;color:var(--focus);text-decoration:underline;font-weight:500}
 .status.err{color:var(--late);border-color:var(--late)}
 
 /* Zugmarken auf der Karte */
@@ -156,6 +164,7 @@ nav button[aria-current="true"]{color:var(--fg);border-top-color:var(--fg)}
       <input class="lineq" id="lineQ" type="search" placeholder="Linie, z. B. ICE 774" enterkeyhint="search" autocomplete="off" aria-label="Nach Linie oder Zugnummer filtern">
     </div>
     <div class="status num" id="status" role="status">Lade Züge …</div>
+    <div class="news" id="news" hidden><button id="newsOpen" type="button"></button><button class="nx" id="newsX" type="button" aria-label="Hinweis schließen">×</button></div>
     <div class="track" id="track" hidden><button class="tbtn" id="trackOpen" type="button" aria-label="Verfolgten Zug anzeigen"></button><button class="tstop" id="trackStop" type="button" aria-label="Verfolgung beenden">×</button></div>
   </div>
 
@@ -767,6 +776,7 @@ function openSheet(kind){
   if(kind==='station')renderStationPicker();
   if(kind==='find')renderFind();
   if(kind==='stop')renderStopSheet();
+  if(kind==='news')renderNews();
   map.invalidateSize();
   paintTrack();
 }
@@ -875,7 +885,7 @@ async function renderFavs(){
   const body=$('shBody');body.replaceChildren();
   if(!state.favs.length){
     body.appendChild(el('p','hint','Noch keine Linie gemerkt. Tippe auf der Karte oder in den Abfahrten auf deinen Zug und wähle dort „Merken“. Danach siehst du hier jeden Tag die nächsten Fahrten dieser Linie ab deinem Einstieg.'));
-    return;
+    body.appendChild(newsLink());return;
   }
   state.favs.forEach((f,i)=>{
     const box=el('div','fav'),h=el('div','h'),p=el('p');
@@ -897,7 +907,58 @@ async function renderFavs(){
       }
     }).catch(()=>{deps.replaceChildren(el('span','hint','Gerade nicht abrufbar.'));});
   });
+  body.appendChild(newsLink());
 }
+
+/* ---------- Was ist neu (liest CHANGELOG.md aus dem Repo) ---------- */
+/* Format: „## Datum“ als Überschrift, darunter „- Eintrag“. Alles andere wird ignoriert. */
+function parseChangelog(md){
+  const out=[];let cur=null;
+  for(const line of String(md).split(/\r?\n/)){
+    const h=line.match(/^##\s+(.+?)\s*$/);
+    if(h){cur={v:h[1],items:[]};out.push(cur);continue;}
+    const it=line.match(/^\s*[-*]\s+(.+?)\s*$/);
+    if(it&&cur)cur.items.push(it[1]);
+  }
+  return out.filter(e=>e.items.length);
+}
+let news=null;
+async function loadNews(){
+  try{
+    const r=await fetch('CHANGELOG.md',{cache:'no-cache'});if(!r.ok)return;
+    news=parseChangelog(await r.text());if(!news.length)return;
+    const seen=store.get('news',null),latest=news[0].v;
+    /* Erstbesuch: kein Hinweis. Wer schon Einstellungen hat, kannte die Seite vor dem Änderungsprotokoll. */
+    if(seen==null&&!['station','favs','cats'].some(k=>store.get(k,null)!=null)){store.set('news',latest);return;}
+    if(seen===latest)return;
+    const fresh=seen==null?news.slice(0,1):news.filter(e=>e.v>seen);
+    const first=(fresh[0]||news[0]).items[0];
+    const n=fresh.reduce((a,e)=>a+e.items.length,0);
+    const b=$('newsOpen');b.replaceChildren(el('b',null,'Neu: '),first+(n>1?' (+'+(n-1)+')':''));
+    $('news').hidden=false;
+  }catch(e){}
+}
+function markNewsSeen(){if(news&&news.length)store.set('news',news[0].v);$('news').hidden=true;}
+function renderNews(){
+  $('shTitle').textContent='Was ist neu';
+  const body=$('shBody');body.replaceChildren();
+  if(!news||!news.length){body.appendChild(el('p','hint','Die Liste der Neuerungen lässt sich gerade nicht laden.'));return;}
+  const box=el('div','newsbox');
+  for(const e of news){
+    const d=/^\d{4}-\d{2}-\d{2}$/.test(e.v)?new Date(e.v+'T12:00:00').toLocaleDateString('de-DE',{day:'numeric',month:'long',year:'numeric'}):e.v;
+    box.appendChild(el('h3',null,d));
+    const ul=el('ul');for(const it of e.items)ul.appendChild(el('li',null,it));box.appendChild(ul);
+  }
+  body.appendChild(box);markNewsSeen();
+}
+function newsLink(){
+  const b=el('button','newslink','Was ist neu?');b.type='button';
+  b.onclick=async()=>{if(!news)await loadNews();openSheet('news');};
+  return b;
+}
+$('newsOpen').onclick=()=>openSheet('news');
+$('newsX').onclick=markNewsSeen;
+loadNews();
 
 /* ---------- Filter ---------- */
 function paintChips(){document.querySelectorAll('.chip').forEach(c=>c.setAttribute('aria-pressed',String(state.cats.has(c.dataset.cat))));}

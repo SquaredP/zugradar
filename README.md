@@ -14,10 +14,15 @@ Mobile Live-Karte, die zeigt, wo sich Züge gerade auf der Strecke befinden – 
 - **Geschwindigkeit:** Durchschnitt zwischen zwei Halten aus Strecke und Echtzeit-Fahrzeit.
 - **Meine Linien:** Linien für tägliche Fahrten merken, mit Einstiegshalt. Gespeichert lokal im Browser.
 - Hell- und Dunkelmodus, Haltestellennamen in der Browsersprache.
+- **Was ist neu:** Nach einem Update erscheint einmalig ein Hinweis, die ganze Liste steht unter „Meine Linien“ → „Was ist neu?“.
 
 ## Wie genau sind die Positionen?
 
 Die Positionen sind **berechnet, nicht per GPS gemessen**. [Transitous](https://transitous.org) liefert Fahrpläne mit Echtzeit-Prognosen (in Deutschland aus dem DELFI-Datensatz, etwa minütlich aktualisiert). Die Seite setzt den Zug anhand der prognostizierten Abfahrts- und Ankunftszeiten zwischen zwei Halten auf die Strecke. Bei Störungen, die noch nicht in der Prognose stehen, kann die Anzeige vom tatsächlichen Standort abweichen.
+
+## Neuerungen
+
+Alle Änderungen stehen in [CHANGELOG.md](CHANGELOG.md). Die Seite liest diese Datei selbst. Neue Einträge kommen oben als `## JJJJ-MM-TT` mit Stichpunkten darunter; nur dieses Format wird angezeigt.
 
 ## Technik
 
