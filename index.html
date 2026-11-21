@@ -62,6 +62,9 @@ button{cursor:pointer}
 .chip[aria-pressed="true"]{border-color:var(--c)}
 .chip[aria-pressed="true"] i{opacity:1}
 .chip[aria-pressed="false"]{color:var(--muted)}
+.chip.far{border-style:dashed}
+.chip.far[aria-pressed="true"]{color:var(--muted)}
+.chip.far[aria-pressed="true"] i{opacity:.45}
 .lineq{flex:none;width:118px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:6px 11px;box-shadow:0 1px 4px rgba(0,0,0,.1)}
 .status{align-self:flex-start;max-width:100%;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:2px 8px;font-size:12px;color:var(--muted)}
 .track{align-self:flex-start;max-width:100%;display:flex;background:var(--surface);border:1px solid var(--line);border-radius:999px;box-shadow:0 1px 4px rgba(0,0,0,.12);overflow:hidden}
@@ -264,6 +267,21 @@ function tripPosition(trip,now){
   }
   return{pos:st[n-1].ll,state:'done',i:n-1};
 }
+/* Ab welcher Zoomstufe eine Zuggattung angezeigt wird: Fernverkehr ganzes Land, Regional Bundesland, S-Bahn Region, Tram/Bus Stadt.
+   Große Bildschirme zeigen bei gleicher Zoomstufe mehr Fläche, die Schwelle steigt dann mit (Referenz: 390 px breit). */
+const MIN_ZOOM={fern:5,regio:8,sbahn:9,stadt:11};
+function minZoom(cat,widthPx){return MIN_ZOOM[cat]+Math.round(Math.max(0,Math.log2(Math.max(widthPx||390,390)/390))*2)/2;}
+/* Überlappende Zugnamen ausblenden: Reihenfolge = Priorität. fixed = bereits belegte Kästchen (z. B. verfolgter Zug).
+   Liefert pro Eintrag, ob er angezeigt wird. Kästchen sind mittig um (x,y), Breite w, Höhe h. */
+function declutter(items,fixed){
+  const boxes=(fixed||[]).slice(),out=[];
+  for(const it of items){
+    const hit=boxes.some(b=>Math.abs(b.x-it.x)*2<b.w+it.w&&Math.abs(b.y-it.y)*2<b.h+it.h);
+    out.push(!hit);if(!hit)boxes.push(it);
+  }
+  return out;
+}
+const boxW=name=>10+7*String(name||'').length;
 /* Teilt den Laufweg wie ein Navi in „gefahren“ und „voraus“ am aktuellen Standort */
 function routeSplit(trip,now){
   const st=trip.stops,tp=tripPosition(trip,now);if(!tp)return null;
@@ -458,34 +476,50 @@ function parseTrips(data,prec){
   return next;
 }
 const precFor=z=>z>=11?5:z>=8?4:3;
+/* Gattung eingeschaltet UND bei diesem Zoom/Bildschirm sinnvoll? */
+const catAllowed=c=>map.getZoom()>=minZoom(c,map.getSize().x);
+const catShown=c=>state.cats.has(c)&&catAllowed(c);
+const farCats=()=>CAT_ORDER.filter(c=>state.cats.has(c)&&!catAllowed(c));
+let failCount=0;
 /* force: laufende Anfrage abbrechen (Nutzer bewegt die Karte). Ohne force läuft eine begonnene Anfrage zu Ende. */
 async function loadTrips(force){
   if(document.hidden)return;
   if(loading&&!force)return;
   if(tripsCtl)tripsCtl.abort();
+  const z=map.getZoom(),need=CAT_ORDER.filter(catShown);
+  /* Nichts Passendes für diesen Ausschnitt: gar nicht erst anfragen (spart Daten und schont die Schnittstelle) */
+  if(!need.length){
+    loading=false;clearTimeout(retryTimer);state.trips=new Map();state.err=null;state.lastOk=Date.now();loadedZoom=z;
+    render();paintChips();return;
+  }
   const my=new AbortController();tripsCtl=my;loading=true;
-  const b=map.getBounds(),now=Date.now(),z=map.getZoom();loadedZoom=z;
+  const b=map.getBounds(),now=Date.now();loadedZoom=z;
   if(!state.lastOk&&!state.err)setStatus('Lade Züge …');
   try{
+    /* Ist nur Fernverkehr gefragt, fordert die Schnittstelle bei höherem Zoom trotzdem nur Fernzüge an */
+    const zoomParam=need.every(c=>c==='fern')&&need.length?Math.min(z,MIN_ZOOM.regio-3):z;
     const data=await api('/api/v6/map/trips',{
       min:b.getSouth().toFixed(5)+','+b.getEast().toFixed(5),
       max:b.getNorth().toFixed(5)+','+b.getWest().toFixed(5),
       startTime:new Date(now-30000).toISOString(),endTime:new Date(now+150000).toISOString(),
-      zoom:z,precision:precFor(z)
+      zoom:zoomParam,precision:precFor(z)
     },my.signal);
-    state.trips=parseTrips(data,precFor(z));state.lastOk=Date.now();state.err=null;
-    render();
+    state.trips=parseTrips(data,precFor(z));state.lastOk=Date.now();state.err=null;failCount=0;
+    render();paintChips();
   }catch(e){
     if(my.signal.aborted)return;
-    state.err='Zugtracker: '+(e.message||'Fehler')+'. Neuer Versuch in 10 s.';
+    /* Bei Fehlern (auch „zu viele Anfragen“) länger warten statt die Schnittstelle weiter zu bedrängen */
+    failCount++;
+    const wait=Math.min(120,/429/.test(e.message||'')?Math.max(60,10*2**(failCount-1)):10*2**(failCount-1));
+    state.err='Zugtracker: '+(e.message||'Fehler')+'. Neuer Versuch in '+wait+' s.';
     setStatus(state.err,true);
-    clearTimeout(retryTimer);retryTimer=setTimeout(loadTrips,10000);
+    clearTimeout(retryTimer);retryTimer=setTimeout(loadTrips,wait*1000);
   }finally{if(tripsCtl===my)loading=false;}
 }
 function note(text,err,ms){state.note={text,err:!!err,until:Date.now()+ms};setStatus(text,!!err);}
 function passes(t){
   if(state.sel&&state.sel.id===t.id)return true;
-  if(!state.cats.has(t.cat))return false;
+  if(!catShown(t.cat))return false;
   if(state.query&&!norm(t.name).includes(state.query))return false;
   if(state.onlyStation&&!state.stationTrips.has(t.id))return false;
   return true;
@@ -500,6 +534,7 @@ function iconFor(t,seg,sel){
     return L.divIcon({className:'',html:s.outerHTML,iconSize:[0,0]});
   }};
 }
+let prevShown=new Set(),hiddenCount=0;
 function render(){
   const now=Date.now();let shown=0;const seen=new Set();
   const list=[...state.trips.values()].filter(passes).sort((a,b)=>CAT_ORDER.indexOf(a.cat)-CAT_ORDER.indexOf(b.cat));
@@ -520,7 +555,19 @@ function render(){
     if(selLL&&key===selName&&dist(selLL,c.p.pos)<2000)continue;
     arr.push(c.p.pos);byName.set(key,arr);kept.push(c);
   }
-  for(const{t,p}of kept){
+  /* Nur was im Bild ist, und nur so viel, dass sich Namen nicht überdecken. Zuvor sichtbare Züge behalten den Vorrang, damit nichts flackert. */
+  const size=map.getSize(),vis=[];
+  for(const c of kept){
+    const pt=map.latLngToContainerPoint(c.p.pos);
+    if(pt.x<-30||pt.y<-30||pt.x>size.x+30||pt.y>size.y+30)continue;
+    c.x=pt.x;c.y=pt.y;c.w=boxW(c.t.name);c.h=22;vis.push(c);
+  }
+  vis.sort((a,b)=>(prevShown.has(a.t.id)?0:1)-(prevShown.has(b.t.id)?0:1)||CAT_ORDER.indexOf(a.t.cat)-CAT_ORDER.indexOf(b.t.cat)||(b.p.seg.rt?1:0)-(a.p.seg.rt?1:0));
+  const fixed=[];
+  if(state.sel&&state.sel.lastPos){const sp=map.latLngToContainerPoint(state.sel.lastPos);fixed.push({x:sp.x,y:sp.y,w:boxW(state.sel.name),h:22});}
+  const keep=declutter(vis,fixed),drawn=vis.filter((c,i)=>keep[i]);
+  hiddenCount=vis.length-drawn.length;prevShown=new Set(drawn.map(c=>c.t.id));
+  for(const{t,p}of drawn){
     if(shown>=350)break;
     seen.add(t.id);shown++;
     const ic=iconFor(t,p.seg,false);
@@ -554,7 +601,9 @@ function render(){
   if(state.lastOk){
     const age=Math.round((now-state.lastOk)/1000);
     let txt='Stand '+new Date(state.lastOk).toLocaleTimeString('de-DE')+' · '+shown+(shown===1?' Zug':' Züge');
-    if(map.getZoom()<10&&[...state.cats].some(c=>c!=='fern'))txt+=' · für Nahverkehr näher heranzoomen';
+    const far=farCats();
+    if(far.length)txt+=' · näher heranzoomen für '+far.map(c=>CATS[c].label).join(', ');
+    else if(hiddenCount>0)txt+=' · '+hiddenCount+' ausgeblendet, näher heranzoomen';
     if(state.query&&!list.length)txt='Kein Zug „'+state.queryRaw+'“ im Ausschnitt. Enter sucht im ganzen Netz.';
     if(state.note&&Date.now()<state.note.until)setStatus(state.note.text,state.note.err);
     else if(age<70&&!state.err)setStatus(txt,false);
@@ -1008,11 +1057,15 @@ $('newsX').onclick=markNewsSeen;
 loadNews();
 
 /* ---------- Filter ---------- */
-function paintChips(){document.querySelectorAll('.chip').forEach(c=>c.setAttribute('aria-pressed',String(state.cats.has(c.dataset.cat))));}
+function paintChips(){document.querySelectorAll('.chip').forEach(c=>{
+  const k=c.dataset.cat,far=!catAllowed(k);
+  c.setAttribute('aria-pressed',String(state.cats.has(k)));c.classList.toggle('far',far);
+  c.title=far?'Zu weit herausgezoomt, näher heranzoomen':'';
+});}
 $('chips').addEventListener('click',e=>{
   const c=e.target.closest('.chip');if(!c)return;
   const k=c.dataset.cat;state.cats.has(k)?state.cats.delete(k):state.cats.add(k);
-  store.set('cats',[...state.cats]);paintChips();render();
+  store.set('cats',[...state.cats]);paintChips();render();loadTrips(true);
   if(state.sheet==='dep')renderDepartures();
 });
 $('lineQ').addEventListener('input',e=>{state.queryRaw=e.target.value.trim();state.query=norm(e.target.value);render();if(state.sheet==='dep')renderDepartures();});
@@ -1064,7 +1117,8 @@ $('locBtn').onclick=()=>{
 
 /* ---------- Takt ---------- */
 let moveTimer=null;
-map.on('moveend',()=>{const c=map.getCenter();store.set('view',{c:[c.lat,c.lng],z:map.getZoom()});if(state.sel&&state.sel.follow&&map.getZoom()===loadedZoom)return;clearTimeout(moveTimer);moveTimer=setTimeout(()=>loadTrips(true),400);});
+map.on('moveend',()=>{const c=map.getCenter();store.set('view',{c:[c.lat,c.lng],z:map.getZoom()});if(state.sel&&state.sel.follow&&map.getZoom()===loadedZoom)return;clearTimeout(moveTimer);moveTimer=setTimeout(()=>loadTrips(true),600);});
+map.on('zoomend resize',paintChips);
 map.on('dragstart',()=>{if(state.sel&&state.sel.follow){state.sel.follow=false;const b=$('followBtn');if(b)b.setAttribute('aria-pressed','false');}});
 setInterval(()=>{if(!document.hidden)render();},1000);
 setInterval(()=>{loadTrips();if(state.sel)loadTrip();if(state.sheet==='dep')renderDepartures();},30000);

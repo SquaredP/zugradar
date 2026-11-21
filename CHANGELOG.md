@@ -5,6 +5,10 @@ Die Seite liest diese Datei selbst und zeigt nach einem Update einmalig einen Hi
 
 ## 2026-11-21
 
+- Züge erscheinen nur noch in sinnvollen Zoomstufen: Fernverkehr für das ganze Land, Regional für ein Bundesland, S-Bahn für die Region, Tram, U-Bahn und Bus für die Stadt. Auf großen Bildschirmen greift das etwas später.
+- Zugnamen überdecken sich nicht mehr. Was nicht Platz hat, wird ausgeblendet; die Statuszeile sagt, wie viele, und mit mehr Zoom erscheinen sie.
+- Zu weit herausgezoomte Verkehrsarten sind oben gestrichelt, die Seite fragt dann keine Daten dafür ab
+- Bei Fehlern oder „zu viele Anfragen“ wartet die Seite länger, bevor sie neu versucht, und zeigt weiter die letzten Züge
 - Navi-Ansicht für den verfolgten Zug: Strecke voraus kräftig, gefahrener Teil grau
 - Nächster Halt und Ziel stehen mit Uhrzeit direkt auf der Karte
 - Neuer Knopf „Strecke voraus“ zeigt den restlichen Weg bis zum Ziel

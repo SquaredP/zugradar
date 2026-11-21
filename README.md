@@ -7,6 +7,7 @@ Mobile Live-Karte, die zeigt, wo sich Züge gerade auf der Strecke befinden – 
 ## Funktionen
 
 - **Karte mit Gleisnetz** (OpenRailwayMap) und allen Zügen im Ausschnitt, mit Verspätung am Zugsymbol. Gestrichelte Symbole fahren nur nach Fahrplan, ohne Echtzeit.
+- **Datensparsam nach Zoomstufe:** Fernverkehr ab Länderebene, Regional ab Bundeslandebene, S-Bahn ab Regionsebene, Tram/Bus nur in der Stadt (auf größeren Bildschirmen etwas später). Es werden nur Züge im Bild geladen und gezeichnet, überlappende Namen werden ausgeblendet.
 - **Filter** nach Fernverkehr, Regionalverkehr, S-Bahn und Tram/U-Bahn sowie Suche nach Linie oder Zugnummer (z. B. `ICE 774`). Enter sucht im ganzen Netz.
 - **Mein Bahnhof:** nächste Abfahrten an einem gewählten Bahnhof, optional nur diese Züge auf der Karte. Zurücksetzbar.
 - **Zug verfolgen:** Die Karte folgt dem Zug. Wie bei einem Navi ist die Strecke voraus kräftig, der gefahrene Teil grau, nächster Halt und Ziel sind mit Uhrzeit beschriftet. „Strecke voraus“ zeigt den ganzen restlichen Weg.
