@@ -5,6 +5,7 @@ Die Seite liest diese Datei selbst und zeigt nach einem Update einmalig einen Hi
 
 ## 2026-11-23
 
+- Neues Symbol: ein stilisierter Radar mit Zug im Browser-Tab und auf dem Home-Bildschirm
 - Mein Bahnhof: Ein kleines × am Ende des Feldes setzt den Bahnhof zurück
 
 ## 2026-11-22
