@@ -8,7 +8,8 @@
 <meta name="theme-color" content="#f3f5f4" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#14181b" media="(prefers-color-scheme: dark)">
 <title>Zugradar</title>
-<meta name="referrer" content="no-referrer">
+<!-- Nur die Adresse dieser Seite (ohne Pfad) wird an die Kartendienste gesendet; OpenRailwayMap verlangt einen Referer. -->
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https://server.arcgisonline.com https://tiles.openrailwaymap.org; connect-src 'self' https://api.transitous.org; base-uri 'none'; form-action 'none'">
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
 <style>
@@ -1094,6 +1095,7 @@ function renderAbout(){
     ul(['Transitous (api.transitous.org): sichtbarer Kartenausschnitt, gewählte Zug-ID, Suchtext bei der Bahnhofssuche',
         'Esri und OpenRailwayMap: Kartenkacheln des sichtbaren Bereichs',
         'GitHub Pages: liefert diese Seite aus und führt eigene Zugriffsprotokolle']),
+    p('Alle diese Dienste sehen außerdem, von welcher Seite die Anfrage kommt (squaredp.github.io, ohne Pfad). OpenRailwayMap verlangt das.'),
     p('Dein Standort wird nur abgefragt, wenn du den Standortknopf tippst. Er bleibt im Browser. Weil die Karte dorthin springt, geht danach der sichtbare Kartenausschnitt an Transitous.'));
   sec('Fehler oder Wünsche?',
     (()=>{const q=p('Bitte als ');q.append(link('Issue auf GitHub','https://github.com/SquaredP/zugradar/issues'),' melden.');return q;})());
