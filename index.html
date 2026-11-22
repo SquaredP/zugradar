@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#14181b" media="(prefers-color-scheme: dark)">
 <title>Zugradar</title>
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https://server.arcgisonline.com https://*.tiles.openrailwaymap.org; connect-src 'self' https://api.transitous.org; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https://server.arcgisonline.com https://tiles.openrailwaymap.org; connect-src 'self' https://api.transitous.org; base-uri 'none'; form-action 'none'">
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
 <style>
 /* Schriften liegen im Repo (vendor/fonts), damit beim Laden keine Anfrage an Google geht. */
@@ -396,8 +396,17 @@ function setBase(){
   base.eachLayer(l=>l.bringToBack());
 }
 setBase();dark.addEventListener('change',setBase);
-L.tileLayer('https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png',
-  {subdomains:'abc',maxZoom:19,opacity:.75,attribution:'Gleise: © OpenRailwayMap · Züge: Transitous'}).addTo(map);
+/* Die Subdomains a/b/c sind bei OpenRailwayMap veraltet; die Hauptadresse ist die vorgesehene. */
+const rail=L.tileLayer('https://tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png',
+  {maxZoom:19,opacity:.75,attribution:'Gleise: © OpenRailwayMap · Züge: Transitous'}).addTo(map);
+/* Fallen die Gleiskacheln aus, soll das sichtbar sein statt einer stillen leeren Karte */
+let railOk=0,railErr=0,railNote=0;
+rail.on('tileload',()=>{railOk++;});
+rail.on('tileerror',()=>{
+  railErr++;
+  if(railErr>=6&&railOk===0&&Date.now()-railNote>60000){railNote=Date.now();note('Gleiskarte gerade nicht erreichbar (OpenRailwayMap). Züge laufen weiter.',true,8000);}
+});
+map.on('moveend',()=>{railOk=0;railErr=0;});
 const markers=new Map();
 let routeLine=null,meMarker=null,stopLayer=null,stopDots=[],stopHits=[],route=null;
 function clearRoute(){
