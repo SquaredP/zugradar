@@ -3,6 +3,10 @@
 Neue Funktionen und Korrekturen am Zugradar. Neueste Einträge oben.
 Die Seite liest diese Datei selbst und zeigt nach einem Update einmalig einen Hinweis an.
 
+## 2026-11-22
+
+- Im Querformat auf Notebook und iPad erscheint das Detailblatt rechts neben der Karte statt darunter, wie im Flugradar. Die Karte behält so die volle Höhe; auf dem Handy bleibt alles unverändert
+
 ## 2026-11-21
 
 - Doppeltipp auf die Karte zoomt eine Stufe näher, wie beim Schiffsradar. Beim Verfolgen bleibt der Zug dabei in der Mitte.

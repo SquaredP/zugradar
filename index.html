@@ -158,6 +158,16 @@ nav{position:relative;z-index:600;display:grid;grid-template-columns:repeat(3,1f
   padding-bottom:env(safe-area-inset-bottom,0px)}
 nav button{background:none;border:0;padding:11px 4px 10px;font-weight:500;color:var(--muted);border-top:3px solid transparent}
 nav button[aria-current="true"]{color:var(--fg);border-top-color:var(--fg)}
+/* Notebook und iPad im Querformat: Detailblatt rechts neben der Karte statt darunter, damit die Karte die volle Höhe behält */
+@media (min-width:900px) and (min-height:520px) and (orientation:landscape){
+  #app{display:grid;grid-template-columns:minmax(0,1fr) clamp(360px,34vw,460px);grid-template-rows:minmax(0,1fr) auto}
+  #map,.top{grid-column:1/-1;grid-row:1}
+  nav{grid-column:1/-1;grid-row:2}
+  .sheet{grid-column:2;grid-row:1;max-height:none;min-height:0;border-top:0;border-left:1px solid var(--line);box-shadow:-6px 0 18px rgba(0,0,0,.14)}
+  #app:has(.sheet:not([hidden])) #map,#app:has(.sheet:not([hidden])) .top{grid-column:1}
+  .top .bar{max-width:560px}
+  .badge{max-width:30vw}
+}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
