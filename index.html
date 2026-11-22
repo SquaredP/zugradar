@@ -49,6 +49,12 @@ button{cursor:pointer}
   padding:calc(8px + env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) 0 max(12px,env(safe-area-inset-left,0px));pointer-events:none}
 .top>*{pointer-events:auto}
 .bar{display:flex;gap:8px}
+/* kleines × im Feld „Mein Ort“: Ort zurücksetzen */
+.stwrap{flex:1;min-width:0;position:relative;display:flex}
+.stwrap .station{padding-right:46px}
+.stx{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:50%;border:0;background:none;color:var(--muted);font:400 24px/1 var(--ui);padding:0;display:grid;place-items:center}
+.stx:active{background:var(--line)}
+.stx[hidden]{display:none}
 .station{flex:1;min-width:0;display:flex;align-items:baseline;gap:8px;text-align:left;background:var(--surface);
   border:1px solid var(--line);border-radius:10px;padding:9px 12px;box-shadow:0 2px 8px rgba(0,0,0,.12)}
 .station small{color:var(--muted);font-size:12px;letter-spacing:.04em;text-transform:uppercase;flex:none}
@@ -187,7 +193,7 @@ nav button[aria-current="true"]{color:var(--fg);border-top-color:var(--fg)}
 <div id="app">
   <div class="top">
     <div class="bar">
-      <button class="station" id="stationBtn" type="button"><small>Mein Bahnhof</small><b id="stationName">wählen</b></button>
+      <div class="stwrap"><button class="station" id="stationBtn" type="button"><small>Mein Bahnhof</small><b id="stationName">wählen</b></button><button class="stx" id="stationClear" type="button" aria-label="Bahnhof zurücksetzen" hidden>×</button></div>
       <button class="icon" id="locBtn" type="button" aria-label="Karte auf meinen Standort zentrieren">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
       </button>
@@ -908,8 +914,9 @@ document.querySelector('nav').addEventListener('click',e=>{const b=e.target.clos
 $('shClose').onclick=closeSheet;
 
 /* ---------- Mein Bahnhof ---------- */
-function paintStation(){$('stationName').textContent=state.station?state.station.name:'wählen';}
+function paintStation(){$('stationName').textContent=state.station?state.station.name:'wählen';$('stationClear').hidden=!state.station;}
 $('stationBtn').onclick=()=>{setTab('dep',true);openSheet('station');};
+$('stationClear').onclick=()=>{state.station=null;store.del('station');state.onlyStation=false;state.stationTrips=new Set();state.deps=null;paintStation();render();if(state.sheet==='dep'||state.sheet==='station')openSheet('station');};
 let geoTimer=null;
 function renderStationPicker(){
   $('shTitle').textContent='Bahnhof wählen';

@@ -3,6 +3,10 @@
 Neue Funktionen und Korrekturen am Zugradar. Neueste Einträge oben.
 Die Seite liest diese Datei selbst und zeigt nach einem Update einmalig einen Hinweis an.
 
+## 2026-11-23
+
+- Mein Bahnhof: Ein kleines × am Ende des Feldes setzt den Bahnhof zurück
+
 ## 2026-11-22
 
 - Handy: Das Detailblatt öffnet kompakt und lässt sich über den Griff oben (antippen oder ziehen) auf halbe und volle Höhe bringen. Solange es offen ist, blenden sich Filterleiste und Statuszeile aus, die Karte bleibt größer sichtbar
