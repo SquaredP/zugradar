@@ -5,6 +5,7 @@ Die Seite liest diese Datei selbst und zeigt nach einem Update einmalig einen Hi
 
 ## 2026-11-22
 
+- Handy: Das Detailblatt öffnet kompakt und lässt sich über den Griff oben (antippen oder ziehen) auf halbe und volle Höhe bringen. Solange es offen ist, blenden sich Filterleiste und Statuszeile aus, die Karte bleibt größer sichtbar
 - Im Querformat auf Notebook und iPad erscheint das Detailblatt rechts neben der Karte statt darunter, wie im Flugradar. Die Karte behält so die volle Höhe; auf dem Handy bleibt alles unverändert
 - Gleiskarte wieder zuverlässiger: Die Seite nutzt jetzt die aktuelle Adresse von OpenRailwayMap, die alten Zusatzadressen werden dort abgeschaltet
 - Fällt die Gleiskarte aus, steht ein Hinweis in der Statuszeile, statt dass die Gleise still fehlen
