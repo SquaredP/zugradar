@@ -219,7 +219,7 @@ nav button[aria-current="true"]{color:var(--fg);border-top-color:var(--fg)}
       </button>
     </div>
     <div class="chips" id="chips">
-      <button class="chip" id="typeBtn" type="button" aria-haspopup="true" aria-expanded="false"><span id="typeTxt">Verkehrsarten</span> ▾</button>
+      <button class="chip" id="typeBtn" type="button" aria-haspopup="true" aria-expanded="false"><span id="typeTxt">Typen</span> ▾</button>
       <input class="lineq" id="lineQ" type="search" placeholder="Linie, z. B. ICE 774" enterkeyhint="search" autocomplete="off" aria-label="Nach Linie oder Zugnummer filtern">
     </div>
     <div class="menu" id="menu" hidden></div>
@@ -1269,14 +1269,14 @@ loadNews();
 /* ---------- Filter ---------- */
 function paintChips(){
   const n=state.cats.size,k=CAT_ORDER.length;
-  $('typeTxt').textContent=(n===k?'Alle Arten':n?n+' von '+k+' Arten':'Keine Arten')+(state.standing?' + Stehende':'');
+  $('typeTxt').textContent=(n===k?'Alle Typen':n?n+' von '+k+' Typen':'Keine Typen')+(state.standing?' + stehende':'');
   if(menuOpen)renderMenu();
 }
 let menuOpen=false;
 function closeMenu(){menuOpen=false;$('menu').hidden=true;$('typeBtn').setAttribute('aria-expanded','false');}
 function renderMenu(){
   const box=$('menu');
-  box.replaceChildren(el('h3',null,'Diese Verkehrsarten zeigen'));
+  box.replaceChildren(el('h3',null,'Diese Zugtypen zeigen'));
   const all=el('div','all'),a1=el('button',null,'Alle'),a2=el('button',null,'Keine');a1.type=a2.type='button';
   const apply=()=>{store.set('cats',[...state.cats]);paintChips();render();loadTrips(true);clearStations();loadStations();};
   a1.onclick=()=>{state.cats=new Set(CAT_ORDER);apply();};a2.onclick=()=>{state.cats=new Set();apply();};
@@ -1290,7 +1290,7 @@ function renderMenu(){
   }
   const lab=el('label'),cb=el('input'),dot=el('i','ring');cb.type='checkbox';cb.checked=state.standing;cb.id='standCb';
   cb.onchange=()=>{state.standing=cb.checked;store.set('standing',state.standing);paintChips();render();};
-  lab.append(cb,dot,el('span',null,'Stehende Züge (im Halt)'));
+  lab.append(cb,dot,el('span',null,'Stehende (im Halt)'));
   box.append(el('h3',null,'Zusätzlich'),lab);
 }
 function toggleMenu(){
