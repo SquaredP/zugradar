@@ -73,7 +73,6 @@ button{cursor:pointer}
 .chip[aria-pressed="true"]{border-color:var(--c)}
 .chip[aria-pressed="true"] i{opacity:1}
 .chip[aria-pressed="false"]{color:var(--muted)}
-.railchip i{background:var(--muted);opacity:1;border-radius:2px;height:3px;width:12px}
 .chip[aria-expanded="true"]{border-color:var(--fg)}
 .menu{max-height:60dvh;overflow-y:auto;align-self:flex-start;max-width:100%;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.22);padding:6px 4px;min-width:230px}
 .menu h3{margin:4px 10px 2px;font:600 12px/1.2 var(--ui);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
@@ -221,7 +220,6 @@ nav button[aria-current="true"]{color:var(--fg);border-top-color:var(--fg)}
     </div>
     <div class="chips" id="chips">
       <button class="chip" id="typeBtn" type="button" aria-haspopup="true" aria-expanded="false"><span id="typeTxt">Verkehrsarten</span> ▾</button>
-      <button class="chip railchip" id="railChip" type="button"><i></i><span></span></button>
       <input class="lineq" id="lineQ" type="search" placeholder="Linie, z. B. ICE 774" enterkeyhint="search" autocomplete="off" aria-label="Nach Linie oder Zugnummer filtern">
     </div>
     <div class="menu" id="menu" hidden></div>
@@ -447,22 +445,6 @@ rail.on('tileerror',()=>{
 });
 map.on('moveend',()=>{railOk=0;railErr=0;});
 
-/* Gleisnetz: Alle / Hauptnetz / Aus. Die Kacheln sind fertige Bilder und lassen sich nicht nach Streckentyp trennen.
-   Das Hauptnetz nutzt deshalb die grobe Kachelstufe (ohne Bahnhofsgleise und Nebengleise); beim Hineinzoomen wird sie nur vergrößert. */
-const RAIL_MODES=['alle','haupt','aus'],RAIL_LABEL={alle:'Gleise: alle',haupt:'Gleise: Hauptnetz',aus:'Gleise: aus'};
-let railMode=RAIL_MODES.includes(store.get('rail','alle'))?store.get('rail','alle'):'alle';
-function applyRail(){
-  const show=railMode!=='aus';
-  rail.options.maxNativeZoom=railMode==='haupt'?11:undefined;
-  rail.setOpacity(railMode==='haupt'?.6:.75);
-  if(show&&!map.hasLayer(rail)){map.addLayer(rail);}
-  else if(!show&&map.hasLayer(rail))map.removeLayer(rail);
-  else if(show)rail.redraw();
-  $('railChip').querySelector('span').textContent=RAIL_LABEL[railMode];
-  $('railChip').setAttribute('aria-pressed',String(railMode!=='aus'));
-}
-$('railChip').onclick=()=>{railMode=RAIL_MODES[(RAIL_MODES.indexOf(railMode)+1)%3];store.set('rail',railMode);applyRail();};
-applyRail();
 const markers=new Map();
 let routeLine=null,meMarker=null,stopLayer=null,stopDots=[],stopHits=[],route=null;
 function clearRoute(){
