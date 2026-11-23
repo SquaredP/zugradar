@@ -5,6 +5,7 @@ Die Seite liest diese Datei selbst und zeigt nach einem Update einmalig einen Hi
 
 ## 2026-11-23
 
+- Verkehrsarten als aufklappbares Menü (wie im Flug- und Schiffsradar) statt vier einzelner Chips. Dort gibt es auch „Stehende Züge (im Halt)“ zum Ausblenden; stehende Züge sind gedimmt. Der Hinweis „näher heranzoomen“ steht jetzt im Menü
 - Gleisnetz umschaltbar: „Gleise: alle“, „Gleise: Hauptnetz“ (nur Hauptstrecken, in der Stadtansicht ausgeblendet) oder „Gleise: aus“. Die Wahl bleibt gespeichert
 - Bahnhöfe auf der Karte antippen: ab Zoomstufe 10 erscheinen Bahnhöfe (ab Stufe 14 auch Tram-, U-Bahn- und Bus-Haltestellen). Ein Tipp öffnet die Tafel mit je 5 Abfahrten und Ankünften, auf- und zuklappbar, mit „5 frühere“ und „5 spätere“. Ein Eintrag antippen folgt dem Zug
 - Neues Symbol: ein stilisierter Radar mit Zug im Browser-Tab und auf dem Home-Bildschirm. Der Hintergrund im Browser-Tab ist transparent, das Symbol sitzt mittig

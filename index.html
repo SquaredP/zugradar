@@ -74,6 +74,17 @@ button{cursor:pointer}
 .chip[aria-pressed="true"] i{opacity:1}
 .chip[aria-pressed="false"]{color:var(--muted)}
 .railchip i{background:var(--muted);opacity:1;border-radius:2px;height:3px;width:12px}
+.chip[aria-expanded="true"]{border-color:var(--fg)}
+.menu{max-height:60dvh;overflow-y:auto;align-self:flex-start;max-width:100%;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.22);padding:6px 4px;min-width:230px}
+.menu h3{margin:4px 10px 2px;font:600 12px/1.2 var(--ui);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.menu label{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;cursor:pointer}
+.menu label small{margin-left:auto;color:var(--muted);font-size:12px}
+.menu i.ring{background:none!important;border:2px solid var(--muted)}
+.menu label i{width:12px;height:12px;border-radius:50%;background:var(--c)}
+.menu input{width:18px;height:18px;margin:0}
+.menu .all{display:flex;gap:12px;padding:4px 10px 6px}
+.menu .all button{background:none;border:0;padding:4px 0;color:var(--focus);font-weight:500}
+.tm.stand{opacity:.6}
 .chip.far{border-style:dashed}
 .chip.far[aria-pressed="true"]{color:var(--muted)}
 .chip.far[aria-pressed="true"] i{opacity:.45}
@@ -209,13 +220,11 @@ nav button[aria-current="true"]{color:var(--fg);border-top-color:var(--fg)}
       </button>
     </div>
     <div class="chips" id="chips">
-      <button class="chip c-fern" data-cat="fern" type="button"><i></i>Fernverkehr</button>
-      <button class="chip c-regio" data-cat="regio" type="button"><i></i>Regional</button>
-      <button class="chip c-sbahn" data-cat="sbahn" type="button"><i></i>S-Bahn</button>
-      <button class="chip c-stadt" data-cat="stadt" type="button"><i></i>Tram · U · Bus</button>
+      <button class="chip" id="typeBtn" type="button" aria-haspopup="true" aria-expanded="false"><span id="typeTxt">Verkehrsarten</span> ▾</button>
       <button class="chip railchip" id="railChip" type="button"><i></i><span></span></button>
       <input class="lineq" id="lineQ" type="search" placeholder="Linie, z. B. ICE 774" enterkeyhint="search" autocomplete="off" aria-label="Nach Linie oder Zugnummer filtern">
     </div>
+    <div class="menu" id="menu" hidden></div>
     <div class="status num" id="status" role="status">Lade Züge …</div>
     <div class="news" id="news" hidden><button id="newsOpen" type="button"></button><button class="nx" id="newsX" type="button" aria-label="Hinweis schließen">×</button></div>
     <div class="track" id="track" hidden><button class="tbtn" id="trackOpen" type="button" aria-label="Verfolgten Zug anzeigen"></button><button class="tstop" id="trackStop" type="button" aria-label="Verfolgung beenden">×</button></div>
@@ -368,7 +377,7 @@ function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className
 function delayEl(min){const s=el('small',min>=3?'late':'ok',min>0?'+'+min:min<0?String(min):'pünktl.');return s;}
 
 const state={
-  cats:new Set(store.get('cats',['fern','regio','sbahn'])),
+  cats:new Set(store.get('cats',['fern','regio','sbahn'])),standing:store.get('standing',true),
   station:store.get('station',null),
   favs:store.get('favs',[]),
   onlyStation:false, stationTrips:new Set(), query:'',
@@ -592,11 +601,11 @@ function passes(t){
   return true;
 }
 function setStatus(text,err){const s=$('status');s.textContent=text;s.classList.toggle('err',!!err);}
-function iconFor(t,seg,sel){
+function iconFor(t,seg,sel,standing){
   const d=delayMin(seg.arr,seg.sarr);
-  const key=t.name+'|'+t.cat+'|'+seg.rt+'|'+(d>=3?d:0)+'|'+sel;
+  const key=t.name+'|'+t.cat+'|'+seg.rt+'|'+(d>=3?d:0)+'|'+sel+'|'+!!standing;
   return{key,make:()=>{
-    const s=el('span','tm c-'+t.cat+(seg.rt?'':' plan')+(sel?' sel':''),t.name);
+    const s=el('span','tm c-'+t.cat+(seg.rt?'':' plan')+(sel?' sel':'')+(standing?' stand':''),t.name);
     if(d>=3)s.appendChild(el('em',null,'+'+d));
     return L.divIcon({className:'',html:s.outerHTML,iconSize:[0,0]});
   }};
@@ -611,7 +620,7 @@ function render(){
   for(const t of list){
     if(state.sel&&state.sel.id===t.id)continue;
     const p=segmentPosition(t.segs,now);
-    if(p.pos)cand.push({t,p});
+    if(p.pos&&(state.standing||p.state==='run'))cand.push({t,p});
   }
   cand.sort((x,y)=>(y.p.seg.rt?1:0)-(x.p.seg.rt?1:0));
   const kept=[],byName=new Map();
@@ -637,7 +646,7 @@ function render(){
   for(const{t,p}of drawn){
     if(shown>=350)break;
     seen.add(t.id);shown++;
-    const ic=iconFor(t,p.seg,false);
+    const ic=iconFor(t,p.seg,false,p.state!=='run');
     let m=markers.get(t.id);
     if(!m){
       m=L.marker(p.pos,{icon:ic.make(),keyboard:false}).addTo(map);
@@ -1277,17 +1286,40 @@ $('newsX').onclick=markNewsSeen;
 loadNews();
 
 /* ---------- Filter ---------- */
-function paintChips(){document.querySelectorAll('.chip[data-cat]').forEach(c=>{
-  const k=c.dataset.cat,far=!catAllowed(k);
-  c.setAttribute('aria-pressed',String(state.cats.has(k)));c.classList.toggle('far',far);
-  c.title=far?'Zu weit herausgezoomt, näher heranzoomen':'';
-});}
-$('chips').addEventListener('click',e=>{
-  const c=e.target.closest('.chip[data-cat]');if(!c)return;
-  const k=c.dataset.cat;state.cats.has(k)?state.cats.delete(k):state.cats.add(k);
-  store.set('cats',[...state.cats]);paintChips();render();loadTrips(true);clearStations();loadStations();
-  if(state.sheet==='dep')renderDepartures();
-});
+function paintChips(){
+  const n=state.cats.size,k=CAT_ORDER.length;
+  $('typeTxt').textContent=(n===k?'Alle Verkehrsarten':n?n+' von '+k+' Verkehrsarten':'Keine Verkehrsarten')+(state.standing?'':' · ohne stehende');
+  if(menuOpen)renderMenu();
+}
+let menuOpen=false;
+function closeMenu(){menuOpen=false;$('menu').hidden=true;$('typeBtn').setAttribute('aria-expanded','false');}
+function renderMenu(){
+  const box=$('menu');
+  box.replaceChildren(el('h3',null,'Diese Verkehrsarten zeigen'));
+  const all=el('div','all'),a1=el('button',null,'Alle'),a2=el('button',null,'Keine');a1.type=a2.type='button';
+  const apply=()=>{store.set('cats',[...state.cats]);paintChips();render();loadTrips(true);clearStations();loadStations();};
+  a1.onclick=()=>{state.cats=new Set(CAT_ORDER);apply();};a2.onclick=()=>{state.cats=new Set();apply();};
+  all.append(a1,a2);box.appendChild(all);
+  for(const k of CAT_ORDER){
+    const lab=el('label','c-'+k),cb=el('input'),dot=el('i');cb.type='checkbox';cb.checked=state.cats.has(k);cb.dataset.cat=k;
+    cb.onchange=()=>{cb.checked?state.cats.add(k):state.cats.delete(k);apply();};
+    lab.append(cb,dot,el('span',null,CATS[k].label));
+    if(!catAllowed(k))lab.append(el('small',null,'näher heranzoomen'));
+    box.appendChild(lab);
+  }
+  const lab=el('label'),cb=el('input'),dot=el('i','ring');cb.type='checkbox';cb.checked=state.standing;cb.id='standCb';
+  cb.onchange=()=>{state.standing=cb.checked;store.set('standing',state.standing);paintChips();render();};
+  lab.append(cb,dot,el('span',null,'Stehende Züge (im Halt)'));
+  box.append(el('h3',null,'Zusätzlich'),lab);
+}
+function toggleMenu(){
+  if(menuOpen){closeMenu();return;}
+  if(state.sheet)closeSheet();
+  menuOpen=true;renderMenu();$('menu').hidden=false;$('typeBtn').setAttribute('aria-expanded','true');
+}
+document.addEventListener('click',e=>{if(menuOpen&&!e.composedPath().some(n=>n.id==='menu'||n.id==='typeBtn'))closeMenu();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeMenu();});
+$('typeBtn').addEventListener('click',toggleMenu);
 $('lineQ').addEventListener('input',e=>{state.queryRaw=e.target.value.trim();state.query=norm(e.target.value);render();if(state.sheet==='dep')renderDepartures();});
 $('lineQ').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();e.target.blur();findTrain();}});
 function showTrain(t){
