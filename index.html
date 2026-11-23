@@ -448,12 +448,12 @@ rail.on('tileerror',()=>{
 map.on('moveend',()=>{railOk=0;railErr=0;});
 
 /* Gleisnetz: Alle / Hauptnetz / Aus. Die Kacheln sind fertige Bilder und lassen sich nicht nach Streckentyp trennen.
-   Das Hauptnetz nutzt deshalb die grobe Kachelstufe (zeigt nur Hauptstrecken) und blendet sich in der Stadtansicht aus. */
+   Das Hauptnetz nutzt deshalb die grobe Kachelstufe (ohne Bahnhofsgleise und Nebengleise); beim Hineinzoomen wird sie nur vergrößert. */
 const RAIL_MODES=['alle','haupt','aus'],RAIL_LABEL={alle:'Gleise: alle',haupt:'Gleise: Hauptnetz',aus:'Gleise: aus'};
 let railMode=RAIL_MODES.includes(store.get('rail','alle'))?store.get('rail','alle'):'alle';
 function applyRail(){
-  const show=railMode==='alle'||(railMode==='haupt'&&map.getZoom()<=12);
-  rail.options.maxNativeZoom=railMode==='haupt'?10:undefined;
+  const show=railMode!=='aus';
+  rail.options.maxNativeZoom=railMode==='haupt'?11:undefined;
   rail.setOpacity(railMode==='haupt'?.6:.75);
   if(show&&!map.hasLayer(rail)){map.addLayer(rail);}
   else if(!show&&map.hasLayer(rail))map.removeLayer(rail);
@@ -462,7 +462,6 @@ function applyRail(){
   $('railChip').setAttribute('aria-pressed',String(railMode!=='aus'));
 }
 $('railChip').onclick=()=>{railMode=RAIL_MODES[(RAIL_MODES.indexOf(railMode)+1)%3];store.set('rail',railMode);applyRail();};
-map.on('zoomend',()=>{if(railMode==='haupt')applyRail();});
 applyRail();
 const markers=new Map();
 let routeLine=null,meMarker=null,stopLayer=null,stopDots=[],stopHits=[],route=null;
@@ -1288,7 +1287,7 @@ loadNews();
 /* ---------- Filter ---------- */
 function paintChips(){
   const n=state.cats.size,k=CAT_ORDER.length;
-  $('typeTxt').textContent=(n===k?'Alle Verkehrsarten':n?n+' von '+k+' Verkehrsarten':'Keine Verkehrsarten')+(state.standing?'':' · ohne stehende');
+  $('typeTxt').textContent=(n===k?'Alle Arten':n?n+' von '+k+' Arten':'Keine Arten')+(state.standing?' + Stehende':'');
   if(menuOpen)renderMenu();
 }
 let menuOpen=false;
