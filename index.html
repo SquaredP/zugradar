@@ -171,6 +171,14 @@ select,.field{background:var(--bg);border:1px solid var(--line);border-radius:8p
 .sechead .caret{transition:transform .15s}
 .sechead[aria-expanded="false"] .caret{transform:rotate(-90deg)}
 .more{align-self:flex-start}.more:disabled{opacity:.45}
+.alerts{display:flex;flex-direction:column;gap:6px}
+.alerts>button{display:flex;justify-content:space-between;align-items:center;width:100%;background:none;border:0;border-top:1px solid var(--line);padding:10px 0 4px;font:600 12px/1 var(--ui);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.alerts>button .caret{transition:transform .15s}
+.alerts>button[aria-expanded="false"] .caret{transform:rotate(-90deg)}
+.alert{border-left:3px solid var(--focus);padding:2px 0 2px 10px;display:flex;flex-direction:column;gap:2px}
+.alert.warn{border-left-color:var(--late)}
+.alert p{margin:0}
+.alert a{color:var(--focus);font-weight:500}
 .hint{color:var(--muted);margin:0}
 .fav{border-top:1px solid var(--line);padding:10px 0;display:flex;flex-direction:column;gap:6px}
 .fav .h{display:flex;align-items:center;gap:8px}
@@ -716,14 +724,15 @@ async function loadTrip(){
     const it=await api('/api/v6/trip',{tripId:sel.id});
     if(state.sel!==sel)return;
     const legs=(it.legs||[]).filter(l=>l.from&&l.to);
-    const stops=[],coords=[];let rt=false,cancelled=false;
+    const stops=[],coords=[],rawAlerts=[];let rt=false,cancelled=false;
     for(const l of legs){
-      rt=rt||!!l.realTime;cancelled=cancelled||!!l.cancelled;
+      rt=rt||!!l.realTime;cancelled=cancelled||!!l.cancelled;rawAlerts.push(l.alerts);
       for(const p of[l.from,...(l.intermediateStops||[]),l.to]){
         const last=stops[stops.length-1];
         const s={name:p.name,raw:p.name,id:p.stopId,ll:[p.lat,p.lon],arr:ms(p.arrival),dep:ms(p.departure),
-          sarr:ms(p.scheduledArrival),sdep:ms(p.scheduledDeparture),track:p.track||p.scheduledTrack||'',cancelled:!!p.cancelled};
-        if(last&&last.name===s.name){last.dep=s.dep??last.dep;last.sdep=s.sdep??last.sdep;}else stops.push(s);
+          sarr:ms(p.scheduledArrival),sdep:ms(p.scheduledDeparture),track:p.track||p.scheduledTrack||'',cancelled:!!p.cancelled,alerts:p.alerts||[]};
+        rawAlerts.push(p.alerts);
+        if(last&&last.name===s.name){last.dep=s.dep??last.dep;last.sdep=s.sdep??last.sdep;last.alerts=last.alerts.concat(s.alerts);}else stops.push(s);
       }
       if(l.legGeometry&&l.legGeometry.points)coords.push(...decodePolyline(l.legGeometry.points,l.legGeometry.precision));
       if(l.displayName&&sel.name==='Zug')sel.name=l.displayName;
@@ -732,7 +741,7 @@ async function loadTrip(){
     if(!stops.length)throw new Error('leer');
     let from=0;
     for(const s of stops){s.idx=coords.length?nearestIndex(coords,s.ll,from):0;from=s.idx;}
-    sel.trip={stops,coords,cum:cumulative(coords),rt,cancelled,dest:''};applyNames(sel.trip);
+    sel.trip={stops,coords,cum:cumulative(coords),rt,cancelled,dest:'',alerts:parseAlerts(...rawAlerts)};applyNames(sel.trip);
     if(routeLine)map.removeLayer(routeLine);
     if(stopLayer)map.removeLayer(stopLayer);
     const css=cssVar('--'+sel.cat)||'#888',fill=cssVar('--surface')||'#fff',grey=cssVar('--muted')||'#888';
@@ -766,6 +775,7 @@ function renderTripSheet(){
   const row=el('div','nowrow');
   row.append(Object.assign(el('div','now'),{id:'tripNow'}),Object.assign(el('div','speed num'),{id:'tripSpeed'}));
   body.appendChild(row);
+  const al=alertsEl(sel.trip.alerts||[],'trip',renderTripSheet);if(al)body.appendChild(al);
   const acts=el('div','acts');
   const fol=el('button','btn','Karte folgt dem Zug');fol.type='button';fol.id='followBtn';fol.setAttribute('aria-pressed',String(sel.follow));
   fol.onclick=()=>{sel.follow=!sel.follow;fol.setAttribute('aria-pressed',String(sel.follow));render();};
@@ -843,6 +853,41 @@ function clearSel(){
   for(const m of markers.values())m._k='';render();
 }
 
+/* ---------- Hinweise zu Störungen und Sperrungen (so wie Transitous sie liefert) ---------- */
+function parseAlerts(...lists){
+  const out=[],seen=new Set(),now=Date.now();
+  for(const a of lists.flat(Infinity)){
+    if(!a||typeof a!=='object')continue;
+    const head=String(a.headerText||'').trim(),text=String(a.descriptionText||'').trim();
+    if(!head&&!text)continue;
+    const per=(a.impactPeriod||[]).map(r=>[ms(r.start),ms(r.end)]);
+    if(per.length&&!per.some(([,e])=>e==null||e>=now))continue;
+    const key=head+'|'+text;if(seen.has(key))continue;seen.add(key);
+    out.push({head,text:text.slice(0,700),url:/^https?:\/\//i.test(a.url||'')?a.url:'',
+      warn:a.severityLevel==='SEVERE'||a.severityLevel==='WARNING'||a.effect==='NO_SERVICE'||a.effect==='DETOUR',
+      cur:per.some(([s,e])=>(s==null||s<=now)&&(e==null||e>now))});
+  }
+  return out.sort((x,y)=>(y.warn?1:0)-(x.warn?1:0));
+}
+const alertOpen={};
+function alertsEl(list,key,rerender){
+  if(!list.length)return null;
+  const open=alertOpen[key]!==undefined?alertOpen[key]:list.some(a=>a.warn||a.cur);
+  const box=el('section','alerts');box.id='al-'+key;
+  const h=el('button');h.type='button';h.setAttribute('aria-expanded',String(open));
+  h.append(el('span',null,'⚠ Hinweise ('+list.length+')'),el('span','caret','▾'));
+  h.onclick=()=>{alertOpen[key]=!open;rerender();};
+  box.appendChild(h);
+  if(open)for(const a of list){
+    const d=el('div','alert'+(a.warn?' warn':''));
+    if(a.head)d.appendChild(el('b',null,a.head));
+    if(a.text&&a.text!==a.head)d.appendChild(el('p',null,a.text));
+    if(a.url){const l=el('a',null,'Mehr Informationen');l.href=a.url;l.target='_blank';l.rel='noopener noreferrer';d.appendChild(l);}
+    box.appendChild(d);
+  }
+  return box;
+}
+
 /* ---------- Haltestelle antippen ---------- */
 function showStop(i){
   const sel=state.sel;if(!sel||!sel.trip||!sel.trip.stops[i])return;
@@ -870,6 +915,7 @@ function renderStopSheet(){
   if(i<st.length-1&&s.dep!=null)parts.push('ab '+hhmm(s.dep)+late(s.dep,s.sdep));
   if(s.track)parts.push('Gl. '+s.track);
   const info=el('div','now',parts.length?'Dieser Zug: '+parts.join(' · '):'');
+  const sal=alertsEl(parseAlerts(s.alerts||[]),'stop',renderStopSheet);
   const acts=el('div','acts');
   const back=el('button','btn pri','Zurück zum Zug');back.type='button';back.id='stopBack';
   back.onclick=()=>{sel.follow=true;sel.stopI=null;paintStopDots();openSheet('trip');render();};
@@ -878,7 +924,7 @@ function renderStopSheet(){
   mk.onclick=()=>{state.station={id:s.id,name:s.name,lat:s.ll[0],lon:s.ll[1]};store.set('station',state.station);paintStation();mk.textContent='Mein Bahnhof gesetzt';mk.disabled=true;};
   acts.append(back,mk);
   const ul=el('ul','rows num');ul.id='stopDeps';ul.appendChild(el('li','hint','Lade Abfahrten …'));
-  body.append(info,acts,el('p','sub','Nächste Abfahrten hier'),ul);
+  body.append(info);if(sal)body.appendChild(sal);body.append(acts,el('p','sub','Nächste Abfahrten hier'),ul);
   fetchDepartures({id:s.id,lat:s.ll[0],lon:s.ll[1]},sel.cat==='stadt'?undefined:'RAIL',10).then(list=>{
     if(state.sheet!=='stop'||state.sel!==sel||sel.stopI!==i)return;
     ul.replaceChildren();
@@ -952,7 +998,7 @@ async function fetchBoard(stop,kind,o){
     const t=ms(kind==='arr'?(pl.arrival||pl.departure):(pl.departure||pl.arrival)),st=ms(kind==='arr'?(pl.scheduledArrival||pl.scheduledDeparture):(pl.scheduledDeparture||pl.scheduledArrival));
     return{id:s.tripId,name:s.displayName||s.routeShortName||s.tripShortName||'Zug',cat:catOf(s.mode),
       dest:(far&&far.name)||(kind==='dep'?s.headsign:'')||'',destLL:far&&far.lat!=null?[far.lat,far.lon]:null,
-      dep:t,sdep:st,track:pl.track||pl.scheduledTrack||'',rt:!!s.realTime,cancelled:!!(s.cancelled||s.tripCancelled)};
+      dep:t,sdep:st,track:pl.track||pl.scheduledTrack||'',rt:!!s.realTime,cancelled:!!(s.cancelled||s.tripCancelled),alerts:pl.alerts||[]};
   }).filter(d=>d.dep!=null);
 }
 async function loadBoard(kind,dir){
@@ -983,7 +1029,7 @@ function openBoard(stop){
 function boardRow(d,kind){
   const li=el('li'),b=el('button','row'+(d.cancelled?' gone':''));b.type='button';
   const t=el('span','t',hhmm(d.sdep??d.dep));if(d.rt&&!d.cancelled)t.appendChild(delayEl(delayMin(d.dep,d.sdep)));
-  const place=placeName(d.dest,d.destLL),txt=(kind==='arr'?'von ':'nach ')+place+(d.cancelled?' (fällt aus)':'');
+  const place=placeName(d.dest,d.destLL),txt=(d.alerts&&d.alerts.length?'⚠ ':'')+(kind==='arr'?'von ':'nach ')+place+(d.cancelled?' (fällt aus)':'');
   b.append(t,el('span','badge c-'+d.cat,d.name),el('span','d',txt),el('span','g',d.track?'Gl. '+d.track:''));
   b.onclick=()=>selectTrip(d.id,d.name,d.cat);
   li.appendChild(b);return li;
@@ -1017,7 +1063,9 @@ function renderBoard(){
   const rf=el('button','btn','Aktualisieren');rf.type='button';rf.id='boardRefresh';
   rf.onclick=()=>{b.dep=newSec();b.arr=newSec();loadBoard('dep');loadBoard('arr');};
   acts.append(mk,rf);
-  body.append(acts,boardSection('dep','Abfahrten'),boardSection('arr','Ankünfte'));
+  body.appendChild(acts);
+  const bal=alertsEl(parseAlerts(b.dep.items.map(d=>d.alerts),b.arr.items.map(d=>d.alerts)),'board',renderBoard);if(bal)body.appendChild(bal);
+  body.append(boardSection('dep','Abfahrten'),boardSection('arr','Ankünfte'));
   body.scrollTop=y;
 }
 

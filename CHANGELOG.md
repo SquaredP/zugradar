@@ -3,6 +3,10 @@
 Neue Funktionen und Korrekturen am Zugradar. Neueste Einträge oben.
 Die Seite liest diese Datei selbst und zeigt nach einem Update einmalig einen Hinweis an.
 
+## 2026-11-24
+
+- Hinweise zu Störungen und Sperrungen: Liefert Transitous Meldungen zur Fahrt, zu einem Halt oder an einem Bahnhof, erscheinen sie als aufklappbarer Block „⚠ Hinweise“ im Fahrtblatt, im Haltblatt und in der Bahnhofstafel. Abgelaufene Meldungen werden ausgeblendet
+
 ## 2026-11-23
 
 - Handy: Die Seite lässt sich nicht mehr versehentlich zoomen oder verschieben, sodass obere Leiste und Reiter im Bild bleiben. Nur die Karte zoomt

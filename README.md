@@ -13,6 +13,7 @@ Mobile Live-Karte, die zeigt, wo sich Züge gerade auf der Strecke befinden – 
 - **Bedienung:** Doppeltipp (Doppelklick) auf die Karte zoomt eine Stufe näher.
 - **Zug verfolgen:** Die Karte folgt dem Zug. Wie bei einem Navi ist die Strecke voraus kräftig, der gefahrene Teil grau, nächster Halt und Ziel sind mit Uhrzeit beschriftet. „Strecke voraus“ zeigt den ganzen restlichen Weg.
 - **Bahnhofstafel:** Bahnhöfe auf der Karte antippen (Bahn ab Zoomstufe 10, Tram, U-Bahn und Bus ab 14). Je 5 Abfahrten und Ankünfte, auf- und zuklappbar, mit 5 früheren und 5 späteren. Ein Eintrag folgt dem Zug.
+- **Hinweise:** Meldungen zu Störungen und Sperrungen, soweit Transitous sie für eine Fahrt, einen Halt oder einen Bahnhof liefert. Es gibt keine eigene Sperrungsquelle; ob und wie viele Meldungen erscheinen, hängt von den Daten ab.
 - **Fahrtverlauf:** alle Halte mit Ankunft, Abfahrt, Gleis und Verspätung. Halte sind antippbar und zeigen die nächsten Abfahrten dort.
 - **Geschwindigkeit:** Durchschnitt zwischen zwei Halten aus Strecke und Echtzeit-Fahrzeit.
 - **Meine Linien:** Linien für tägliche Fahrten merken, mit Einstiegshalt. Gespeichert lokal im Browser.
